@@ -75,7 +75,7 @@ def models(download: str, search: str):
                 console.print(f"[green]Found {len(results)} models:[/green]")
                 for model in results:
                     console.print(f"  • [bold]{model['id']}[/bold]")
-                    if model.get('description'):
+                    if model.get("description"):
                         console.print(f"    {model['description']}")
                     console.print(f"    Downloads: {model.get('downloads', 0):,}")
                     console.print()

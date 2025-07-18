@@ -56,8 +56,29 @@ class MusicOrganizer:
             console.print("[yellow]No folders found in source directory.[/yellow]")
             return
 
+        # Filter out folders that have already been organized
+        unorganized_folders = []
+        organized_count = 0
+
+        for folder in folders:
+            tracker_file = folder / ".whats-that-sound"
+            if tracker_file.exists():
+                organized_count += 1
+                console.print(f"[dim]Skipping {folder.name} (already organized)[/dim]")
+            else:
+                unorganized_folders.append(folder)
+
+        if organized_count > 0:
+            console.print(
+                f"[yellow]Found {organized_count} already organized folders, skipping them.[/yellow]"
+            )
+
+        if not unorganized_folders:
+            console.print("[yellow]No unorganized folders found.[/yellow]")
+            return
+
         console.print(
-            f"\n[bold cyan]Found {len(folders)} folders to process[/bold cyan]\n"
+            f"\n[bold cyan]Found {len(unorganized_folders)} folders to process[/bold cyan]\n"
         )
 
         # Process statistics
@@ -70,9 +91,9 @@ class MusicOrganizer:
         }
 
         # Process each folder
-        for idx, folder in enumerate(folders, 1):
+        for idx, folder in enumerate(unorganized_folders, 1):
             try:
-                self.ui.display_progress(idx, len(folders), folder.name)
+                self.ui.display_progress(idx, len(unorganized_folders), folder.name)
 
                 # Extract metadata
                 console.print("\n[cyan]Analyzing folder contents...[/cyan]")
@@ -99,6 +120,9 @@ class MusicOrganizer:
                     feedback = self.ui.get_user_feedback(proposal)
 
                     if feedback["action"] == "accept":
+                        # Save proposal to tracker file before organizing
+                        self._save_proposal_tracker(folder, feedback["proposal"])
+
                         # Organize the files
                         self._organize_folder(folder, feedback["proposal"])
                         stats["successful"] += 1
@@ -130,6 +154,25 @@ class MusicOrganizer:
 
         # Display completion summary
         self.ui.display_completion_summary(stats)
+
+    def _save_proposal_tracker(self, source_folder: Path, proposal: Dict):
+        """Save the accepted proposal to a tracker file in the source folder."""
+        tracker_file = source_folder / ".whats-that-sound"
+
+        tracker_data = {
+            "proposal": proposal,
+            "folder_name": source_folder.name,
+            "organized_timestamp": str(Path().absolute()),  # Current timestamp/session
+        }
+
+        try:
+            with open(tracker_file, "w", encoding="utf-8") as f:
+                json.dump(tracker_data, f, indent=2, ensure_ascii=False)
+            console.print(
+                f"[dim]Saved organization record to {tracker_file.name}[/dim]"
+            )
+        except Exception as e:
+            console.print(f"[red]Warning: Could not save tracker file: {e}[/red]")
 
     def _get_llm_proposal(
         self, metadata: Dict, user_feedback: Optional[str] = None

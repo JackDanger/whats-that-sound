@@ -39,22 +39,22 @@ class TestModelManager:
     def test_list_models_with_files(self, model_manager, temp_model_dir):
         """Test listing models when GGUF files exist in HF cache structure."""
         # Create HF cache structure: models--{org}--{model}/snapshots/{commit_hash}/
-        
+
         # Create first model: TheBloke/Llama-2-7B-GGUF
         model1_dir = temp_model_dir / "models--TheBloke--Llama-2-7B-GGUF"
         model1_snapshot = model1_dir / "snapshots" / "abc123"
         model1_snapshot.mkdir(parents=True)
         (model1_snapshot / "llama-2-7b.Q4_K_M.gguf").touch()
-        
+
         # Create second model: microsoft/DialoGPT-small
         model2_dir = temp_model_dir / "models--microsoft--DialoGPT-small"
         model2_snapshot = model2_dir / "snapshots" / "def456"
         model2_snapshot.mkdir(parents=True)
         (model2_snapshot / "model.Q5_K_M.gguf").touch()
-        
+
         # Create non-model directory (should be ignored)
         (temp_model_dir / "not_a_model").mkdir()
-        
+
         models = model_manager.list_models()
         assert len(models) == 2
         assert "TheBloke/Llama-2-7B-GGUF/llama-2-7b.Q4_K_M.gguf" in models
@@ -72,7 +72,13 @@ class TestModelManager:
         mock_hf_fs_class.return_value = mock_fs
 
         # Mock the download to return a path in HF cache
-        hf_cache_path = temp_model_dir / "models--test_user--test-model" / "snapshots" / "abc123" / "test-model.Q4_K_M.gguf"
+        hf_cache_path = (
+            temp_model_dir
+            / "models--test_user--test-model"
+            / "snapshots"
+            / "abc123"
+            / "test-model.Q4_K_M.gguf"
+        )
         mock_download.return_value = str(hf_cache_path)
 
         result = model_manager.download_model("test_user/test-model")
@@ -153,12 +159,12 @@ class TestModelManager:
         mock_model.tags = ["gguf", "llama"]
         mock_model.created_at = "2023-01-01"
         mock_model.last_modified = "2023-01-02"
-        
+
         mock_api.list_models.return_value = [mock_model]
         mock_hf_api_class.return_value = mock_api
 
         results = model_manager.search_models("test query")
-        
+
         assert len(results) == 1
         assert results[0]["id"] == "test/model"
         assert results[0]["downloads"] == 1000
@@ -167,5 +173,5 @@ class TestModelManager:
             library="gguf",
             limit=20,
             sort="downloads",
-            direction=-1
+            direction=-1,
         )

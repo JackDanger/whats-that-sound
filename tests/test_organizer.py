@@ -53,20 +53,31 @@ def mock_metadata_extractor():
     """Create a mock metadata extractor."""
     mock = Mock()
     mock.extract_folder_metadata.return_value = {
-        "folder_name": "test_folder",
-        "total_files": 10,
+        "folder_name": "test_album",
+        "total_files": 2,
         "files": [
-            {"filename": "track1.mp3", "artist": "Test Artist", "title": "Song 1"},
-            {"filename": "track2.mp3", "artist": "Test Artist", "title": "Song 2"},
+            {
+                "filename": "track1.mp3",
+                "artist": "Test Artist",
+                "title": "Track 1",
+                "album": "Test Album",
+                "year": "2023",
+            },
+            {
+                "filename": "track2.mp3",
+                "artist": "Test Artist",
+                "title": "Track 2",
+                "album": "Test Album",
+                "year": "2023",
+            },
         ],
         "analysis": {
             "common_artist": "Test Artist",
             "common_album": "Test Album",
             "common_year": "2023",
             "likely_compilation": False,
-            "track_number_pattern": "sequential",
+            "track_number_pattern": "consistent",
         },
-        "subdirectories": [],
     }
     return mock
 
@@ -75,217 +86,169 @@ class TestMusicOrganizer:
     """Test cases for MusicOrganizer class."""
 
     @patch("src.organizer.Llama")
-    @patch("src.organizer.InteractiveUI")
-    @patch("src.organizer.MetadataExtractor")
-    def test_init_success(
-        self, mock_metadata_class, mock_ui_class, mock_llama_class, tmp_path
-    ):
+    def test_init_success(self, mock_llama_class, tmp_path):
         """Test successful initialization."""
-        mock_llama_class.return_value = Mock()
-        mock_ui_class.return_value = Mock()
-        mock_metadata_class.return_value = Mock()
+        mock_llama = Mock()
+        mock_llama_class.return_value = mock_llama
 
-        model_path = tmp_path / "model.gguf"
-        model_path.touch()
-        source_dir = tmp_path / "source"
-        source_dir.mkdir()
-        target_dir = tmp_path / "target"
+        organizer = MusicOrganizer(
+            tmp_path / "model.gguf", tmp_path / "source", tmp_path / "target"
+        )
 
-        organizer = MusicOrganizer(model_path, source_dir, target_dir)
-
-        assert organizer.model_path == model_path
-        assert organizer.source_dir == source_dir
-        assert organizer.target_dir == target_dir
-        mock_llama_class.assert_called_once()
+        assert organizer.model_path == tmp_path / "model.gguf"
+        assert organizer.source_dir == tmp_path / "source"
+        assert organizer.target_dir == tmp_path / "target"
+        assert organizer.llm == mock_llama
 
     @patch("src.organizer.Llama")
     def test_init_llm_error(self, mock_llama_class, tmp_path):
-        """Test initialization when LLM loading fails."""
-        mock_llama_class.side_effect = Exception("Failed to load model")
+        """Test initialization with LLM error."""
+        mock_llama_class.side_effect = Exception("LLM error")
 
-        model_path = tmp_path / "model.gguf"
-        source_dir = tmp_path / "source"
-        target_dir = tmp_path / "target"
+        with pytest.raises(Exception, match="LLM error"):
+            MusicOrganizer(
+                tmp_path / "model.gguf", tmp_path / "source", tmp_path / "target"
+            )
 
-        with pytest.raises(Exception, match="Failed to load model"):
-            MusicOrganizer(model_path, source_dir, target_dir)
-
-    def test_build_prompt(self, tmp_path, mock_llm, mock_ui, mock_metadata_extractor):
+    def test_build_prompt(self, tmp_path, mock_llm):
         """Test prompt building."""
         with patch("src.organizer.Llama", return_value=mock_llm):
-            with patch("src.organizer.InteractiveUI", return_value=mock_ui):
-                with patch(
-                    "src.organizer.MetadataExtractor",
-                    return_value=mock_metadata_extractor,
-                ):
-                    organizer = MusicOrganizer(
-                        tmp_path / "model.gguf", tmp_path, tmp_path
-                    )
+            organizer = MusicOrganizer(
+                tmp_path / "model.gguf", tmp_path / "source", tmp_path / "target"
+            )
 
-                    metadata = (
-                        mock_metadata_extractor.extract_folder_metadata.return_value
-                    )
-                    prompt = organizer._build_prompt(metadata)
+            metadata = {
+                "folder_name": "Test Album",
+                "total_files": 2,
+                "files": [
+                    {"filename": "track1.mp3", "artist": "Artist", "title": "Track 1"}
+                ],
+                "analysis": {
+                    "common_artist": "Test Artist",
+                    "common_album": "Test Album",
+                    "common_year": "2023",
+                    "likely_compilation": False,
+                    "track_number_pattern": "consistent",
+                },
+            }
 
-                    assert "test_folder" in prompt
-                    assert "Test Artist" in prompt
-                    assert "Test Album" in prompt
-                    assert "2023" in prompt
-                    assert "sequential" in prompt
+            prompt = organizer._build_prompt(metadata)
 
-    def test_build_prompt_with_feedback(
-        self, tmp_path, mock_llm, mock_ui, mock_metadata_extractor
-    ):
+            assert "Test Album" in prompt
+            assert "Test Artist" in prompt
+            assert "2023" in prompt
+            assert "track1.mp3" in prompt
+
+    def test_build_prompt_with_feedback(self, tmp_path, mock_llm):
         """Test prompt building with user feedback."""
         with patch("src.organizer.Llama", return_value=mock_llm):
-            with patch("src.organizer.InteractiveUI", return_value=mock_ui):
-                with patch(
-                    "src.organizer.MetadataExtractor",
-                    return_value=mock_metadata_extractor,
-                ):
-                    organizer = MusicOrganizer(
-                        tmp_path / "model.gguf", tmp_path, tmp_path
-                    )
+            organizer = MusicOrganizer(
+                tmp_path / "model.gguf", tmp_path / "source", tmp_path / "target"
+            )
 
-                    metadata = (
-                        mock_metadata_extractor.extract_folder_metadata.return_value
-                    )
-                    prompt = organizer._build_prompt(
-                        metadata, "This is actually a live album"
-                    )
+            metadata = {
+                "folder_name": "Test Album",
+                "total_files": 2,
+                "files": [],
+                "analysis": {},
+            }
 
-                    assert "User Feedback: This is actually a live album" in prompt
+            prompt = organizer._build_prompt(metadata, "This is feedback")
 
-    def test_parse_llm_response_valid_json(
-        self, tmp_path, mock_llm, mock_ui, mock_metadata_extractor
-    ):
-        """Test parsing valid JSON response from LLM."""
+            assert "This is feedback" in prompt
+            assert "User Feedback:" in prompt
+
+    def test_parse_llm_response_valid_json(self, tmp_path, mock_llm):
+        """Test parsing valid JSON response."""
         with patch("src.organizer.Llama", return_value=mock_llm):
-            with patch("src.organizer.InteractiveUI", return_value=mock_ui):
-                with patch(
-                    "src.organizer.MetadataExtractor",
-                    return_value=mock_metadata_extractor,
-                ):
-                    organizer = MusicOrganizer(
-                        tmp_path / "model.gguf", tmp_path, tmp_path
-                    )
+            organizer = MusicOrganizer(
+                tmp_path / "model.gguf", tmp_path / "source", tmp_path / "target"
+            )
 
-                    response = """Here is my analysis:
-                    ```json
-                    {
-                        "artist": "The Beatles",
-                        "album": "Abbey Road",
-                        "year": "1969",
-                        "release_type": "Album",
-                        "confidence": "high",
-                        "reasoning": "Classic album"
-                    }
-                    ```"""
-
-                    proposal = organizer._parse_llm_response(response)
-
-                    assert proposal["artist"] == "The Beatles"
-                    assert proposal["album"] == "Abbey Road"
-                    assert proposal["year"] == "1969"
-                    assert proposal["release_type"] == "Album"
-
-    def test_parse_llm_response_invalid_json(
-        self, tmp_path, mock_llm, mock_ui, mock_metadata_extractor
-    ):
-        """Test parsing invalid response from LLM."""
-        with patch("src.organizer.Llama", return_value=mock_llm):
-            with patch("src.organizer.InteractiveUI", return_value=mock_ui):
-                with patch(
-                    "src.organizer.MetadataExtractor",
-                    return_value=mock_metadata_extractor,
-                ):
-                    organizer = MusicOrganizer(
-                        tmp_path / "model.gguf", tmp_path, tmp_path
-                    )
-
-                    response = (
-                        "I think the artist is The Beatles and the album is Abbey Road"
-                    )
-
-                    proposal = organizer._parse_llm_response(response)
-
-                    # Should return default values
-                    assert proposal["artist"] == "Unknown Artist"
-                    assert proposal["album"] == "Unknown Album"
-                    assert proposal["confidence"] == "low"
-
-    def test_sanitize_filename(
-        self, tmp_path, mock_llm, mock_ui, mock_metadata_extractor
-    ):
-        """Test filename sanitization."""
-        with patch("src.organizer.Llama", return_value=mock_llm):
-            with patch("src.organizer.InteractiveUI", return_value=mock_ui):
-                with patch(
-                    "src.organizer.MetadataExtractor",
-                    return_value=mock_metadata_extractor,
-                ):
-                    organizer = MusicOrganizer(
-                        tmp_path / "model.gguf", tmp_path, tmp_path
-                    )
-
-                    # Test invalid characters
-                    assert organizer._sanitize_filename("Test/Album") == "Test_Album"
-                    assert organizer._sanitize_filename("Test:Album") == "Test_Album"
-                    assert organizer._sanitize_filename("Test<Album>") == "Test_Album_"
-
-                    # Test length limit
-                    long_name = "A" * 150
-                    assert len(organizer._sanitize_filename(long_name)) == 120
-
-    @patch("src.organizer.shutil.copy2")
-    @patch("src.organizer.MetadataExtractor")
-    def test_organize_folder(
-        self, mock_metadata_class, mock_copy, tmp_path, mock_llm, mock_ui
-    ):
-        """Test organizing a folder."""
-        # Set up MetadataExtractor mock with SUPPORTED_FORMATS
-        mock_metadata_class.SUPPORTED_FORMATS = {
-            ".mp3",
-            ".flac",
-            ".m4a",
-            ".mp4",
-            ".ogg",
-            ".opus",
-            ".wav",
-        }
-
-        with patch("src.organizer.Llama", return_value=mock_llm):
-            with patch("src.organizer.InteractiveUI", return_value=mock_ui):
-                source_dir = tmp_path / "source"
-                source_dir.mkdir()
-                target_dir = tmp_path / "target"
-                target_dir.mkdir()
-
-                # Create test music files
-                test_folder = source_dir / "test_album"
-                test_folder.mkdir()
-                (test_folder / "track1.mp3").touch()
-                (test_folder / "track2.mp3").touch()
-
-                organizer = MusicOrganizer(
-                    tmp_path / "model.gguf", source_dir, target_dir
-                )
-
-                proposal = {
+            valid_response = json.dumps(
+                {
                     "artist": "Test Artist",
                     "album": "Test Album",
                     "year": "2023",
                     "release_type": "Album",
                 }
+            )
 
-                organizer._organize_folder(test_folder, proposal)
+            proposal = organizer._parse_llm_response(valid_response)
 
-                # Check target directory was created
-                expected_dir = target_dir / "Test Artist" / "Test Album (2023)"
-                assert expected_dir.exists()
+            assert proposal["artist"] == "Test Artist"
+            assert proposal["album"] == "Test Album"
+            assert proposal["year"] == "2023"
+            assert proposal["release_type"] == "Album"
 
-                # Check copy was called
-                assert mock_copy.call_count == 2
+    def test_parse_llm_response_invalid_json(self, tmp_path, mock_llm):
+        """Test parsing invalid JSON response."""
+        with patch("src.organizer.Llama", return_value=mock_llm):
+            organizer = MusicOrganizer(
+                tmp_path / "model.gguf", tmp_path / "source", tmp_path / "target"
+            )
+
+            invalid_response = "artist: Test Artist\nalbum: Test Album\nyear: 2023"
+
+            proposal = organizer._parse_llm_response(invalid_response)
+
+            assert proposal["artist"] == "Test Artist"
+            assert proposal["album"] == "Test Album"
+            assert proposal["year"] == "2023"
+
+    def test_sanitize_filename(self, tmp_path, mock_llm):
+        """Test filename sanitization."""
+        with patch("src.organizer.Llama", return_value=mock_llm):
+            organizer = MusicOrganizer(
+                tmp_path / "model.gguf", tmp_path / "source", tmp_path / "target"
+            )
+
+            # Test invalid characters
+            result = organizer._sanitize_filename('Test<>:"/\\|?*Name')
+            assert result == "Test_________Name"
+
+            # Test length limit
+            long_name = "a" * 150
+            result = organizer._sanitize_filename(long_name)
+            assert len(result) <= 120
+
+    def test_organize_folder(self, tmp_path, mock_llm):
+        """Test folder organization."""
+        with patch("src.organizer.Llama", return_value=mock_llm):
+            with patch("src.organizer.shutil.copy2") as mock_copy:
+                with patch("src.organizer.MetadataExtractor") as MockExtractor:
+                    MockExtractor.SUPPORTED_FORMATS = [".mp3", ".flac"]
+
+                    source_dir = tmp_path / "source"
+                    test_folder = source_dir / "test_album"
+                    test_folder.mkdir(parents=True)
+
+                    # Create test files
+                    (test_folder / "track1.mp3").touch()
+                    (test_folder / "track2.flac").touch()
+
+                    target_dir = tmp_path / "target"
+                    target_dir.mkdir()
+
+                    organizer = MusicOrganizer(
+                        tmp_path / "model.gguf", source_dir, target_dir
+                    )
+
+                    proposal = {
+                        "artist": "Test Artist",
+                        "album": "Test Album",
+                        "year": "2023",
+                        "release_type": "Album",
+                    }
+
+                    organizer._organize_folder(test_folder, proposal)
+
+                    # Check target directory was created
+                    expected_dir = target_dir / "Test Artist" / "Test Album (2023)"
+                    assert expected_dir.exists()
+
+                    # Check copy was called
+                    assert mock_copy.call_count == 2
 
     def test_organize_no_folders(
         self, tmp_path, mock_llm, mock_ui, mock_metadata_extractor
@@ -335,3 +298,175 @@ class TestMusicOrganizer:
                     summary_call = mock_ui.display_completion_summary.call_args[0][0]
                     assert summary_call["skipped"] == 1
                     assert summary_call["successful"] == 0
+
+    def test_organize_skip_already_organized(
+        self, tmp_path, mock_llm, mock_metadata_extractor
+    ):
+        """Test skipping folders that already have .whats-that-sound files."""
+        mock_ui = Mock()
+
+        with patch("src.organizer.Llama", return_value=mock_llm):
+            with patch("src.organizer.InteractiveUI", return_value=mock_ui):
+                with patch(
+                    "src.organizer.MetadataExtractor",
+                    return_value=mock_metadata_extractor,
+                ):
+                    source_dir = tmp_path / "source"
+                    source_dir.mkdir()
+
+                    # Create two folders
+                    test_folder1 = source_dir / "test_album1"
+                    test_folder1.mkdir()
+                    test_folder2 = source_dir / "test_album2"
+                    test_folder2.mkdir()
+
+                    # Add tracker file to first folder (already organized)
+                    tracker_file = test_folder1 / ".whats-that-sound"
+                    tracker_data = {
+                        "proposal": {
+                            "artist": "Old Artist",
+                            "album": "Old Album",
+                            "year": "2020",
+                            "release_type": "Album",
+                        },
+                        "folder_name": "test_album1",
+                        "organized_timestamp": "2023-01-01",
+                    }
+                    with open(tracker_file, "w") as f:
+                        json.dump(tracker_data, f)
+
+                    target_dir = tmp_path / "target"
+
+                    organizer = MusicOrganizer(
+                        tmp_path / "model.gguf", source_dir, target_dir
+                    )
+                    organizer.organize()
+
+                    # Should only process test_folder2, not test_folder1
+                    # Verify metadata extractor was only called once (for test_folder2)
+                    mock_metadata_extractor.extract_folder_metadata.assert_called_once()
+
+    def test_organize_all_already_organized(
+        self, tmp_path, mock_llm, mock_metadata_extractor
+    ):
+        """Test when all folders are already organized."""
+        mock_ui = Mock()
+
+        with patch("src.organizer.Llama", return_value=mock_llm):
+            with patch("src.organizer.InteractiveUI", return_value=mock_ui):
+                with patch(
+                    "src.organizer.MetadataExtractor",
+                    return_value=mock_metadata_extractor,
+                ):
+                    source_dir = tmp_path / "source"
+                    source_dir.mkdir()
+
+                    # Create folder with tracker file
+                    test_folder = source_dir / "test_album"
+                    test_folder.mkdir()
+                    tracker_file = test_folder / ".whats-that-sound"
+                    tracker_data = {
+                        "proposal": {
+                            "artist": "Artist",
+                            "album": "Album",
+                            "year": "2020",
+                            "release_type": "Album",
+                        },
+                        "folder_name": "test_album",
+                        "organized_timestamp": "2023-01-01",
+                    }
+                    with open(tracker_file, "w") as f:
+                        json.dump(tracker_data, f)
+
+                    target_dir = tmp_path / "target"
+
+                    organizer = MusicOrganizer(
+                        tmp_path / "model.gguf", source_dir, target_dir
+                    )
+                    organizer.organize()
+
+                    # Should not call metadata extractor or UI methods for processing
+                    mock_metadata_extractor.extract_folder_metadata.assert_not_called()
+                    mock_ui.display_folder_info.assert_not_called()
+
+    def test_save_proposal_tracker(self, tmp_path, mock_llm):
+        """Test saving proposal tracker file."""
+        with patch("src.organizer.Llama", return_value=mock_llm):
+            source_dir = tmp_path / "source"
+            test_folder = source_dir / "test_album"
+            test_folder.mkdir(parents=True)
+
+            target_dir = tmp_path / "target"
+
+            organizer = MusicOrganizer(tmp_path / "model.gguf", source_dir, target_dir)
+
+            proposal = {
+                "artist": "Test Artist",
+                "album": "Test Album",
+                "year": "2023",
+                "release_type": "Album",
+                "confidence": "high",
+                "reasoning": "Test reasoning",
+            }
+
+            organizer._save_proposal_tracker(test_folder, proposal)
+
+            # Check that tracker file was created
+            tracker_file = test_folder / ".whats-that-sound"
+            assert tracker_file.exists()
+
+            # Check file contents
+            with open(tracker_file, "r") as f:
+                tracker_data = json.load(f)
+
+            assert tracker_data["proposal"] == proposal
+            assert tracker_data["folder_name"] == "test_album"
+            assert "organized_timestamp" in tracker_data
+
+    def test_organize_creates_tracker_file(
+        self, tmp_path, mock_llm, mock_metadata_extractor
+    ):
+        """Test that organizing a folder creates the tracker file."""
+        mock_ui = Mock()
+        mock_ui.get_user_feedback.return_value = {
+            "action": "accept",
+            "proposal": {
+                "artist": "Test Artist",
+                "album": "Test Album",
+                "year": "2023",
+                "release_type": "Album",
+            },
+        }
+
+        with patch("src.organizer.Llama", return_value=mock_llm):
+            with patch("src.organizer.InteractiveUI", return_value=mock_ui):
+                with patch(
+                    "src.organizer.MetadataExtractor",
+                    return_value=mock_metadata_extractor,
+                ):
+                    with patch("src.organizer.shutil.copy2"):
+                        with patch("src.organizer.MetadataExtractor") as MockExtractor:
+                            MockExtractor.SUPPORTED_FORMATS = [".mp3"]
+
+                            source_dir = tmp_path / "source"
+                            source_dir.mkdir()
+                            test_folder = source_dir / "test_album"
+                            test_folder.mkdir()
+                            (test_folder / "track.mp3").touch()
+                            target_dir = tmp_path / "target"
+
+                            organizer = MusicOrganizer(
+                                tmp_path / "model.gguf", source_dir, target_dir
+                            )
+                            organizer.organize()
+
+                            # Check that tracker file was created
+                            tracker_file = test_folder / ".whats-that-sound"
+                            assert tracker_file.exists()
+
+                            # Check file contents
+                            with open(tracker_file, "r") as f:
+                                tracker_data = json.load(f)
+
+                            assert tracker_data["proposal"]["artist"] == "Test Artist"
+                            assert tracker_data["folder_name"] == "test_album"

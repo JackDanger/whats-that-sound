@@ -52,7 +52,9 @@ class ModelManager:
                                 # Find GGUF files in this snapshot
                                 for gguf_file in snapshot_dir.glob("*.gguf"):
                                     # Convert model dir name back to repo format
-                                    model_name = model_dir.name.replace("models--", "").replace("--", "/")
+                                    model_name = model_dir.name.replace(
+                                        "models--", ""
+                                    ).replace("--", "/")
                                     models.append(f"{model_name}/{gguf_file.name}")
                                 break
         return sorted(models)
@@ -68,7 +70,7 @@ class ModelManager:
             List of model information dictionaries
         """
         api = HfApi()
-        
+
         try:
             # Search for models with GGUF library and containing the search query
             models = api.list_models(
@@ -76,24 +78,24 @@ class ModelManager:
                 library="gguf",
                 limit=limit,
                 sort="downloads",
-                direction=-1
+                direction=-1,
             )
-            
+
             results = []
             for model in models:
                 # Extract useful information
                 model_info = {
                     "id": model.id,
-                    "downloads": getattr(model, 'downloads', 0),
-                    "description": getattr(model, 'description', None),
-                    "tags": getattr(model, 'tags', []),
-                    "created_at": getattr(model, 'created_at', None),
-                    "updated_at": getattr(model, 'last_modified', None)
+                    "downloads": getattr(model, "downloads", 0),
+                    "description": getattr(model, "description", None),
+                    "tags": getattr(model, "tags", []),
+                    "created_at": getattr(model, "created_at", None),
+                    "updated_at": getattr(model, "last_modified", None),
                 }
                 results.append(model_info)
-            
+
             return results
-            
+
         except Exception as e:
             console.print(f"[red]Error searching models: {e}[/red]")
             raise
@@ -188,7 +190,9 @@ class ModelManager:
                         model_id = "/".join(parts[:-1])
                         filename = parts[-1]
                         # Find the file in HF cache
-                        cache_dir = self.model_dir / f"models--{model_id.replace('/', '--')}"
+                        cache_dir = (
+                            self.model_dir / f"models--{model_id.replace('/', '--')}"
+                        )
                         for snapshot_dir in (cache_dir / "snapshots").iterdir():
                             if snapshot_dir.is_dir():
                                 file_path = snapshot_dir / filename
@@ -209,7 +213,9 @@ class ModelManager:
                     model_id = "/".join(parts[:-1])
                     filename = parts[-1]
                     # Find the file in HF cache
-                    cache_dir = self.model_dir / f"models--{model_id.replace('/', '--')}"
+                    cache_dir = (
+                        self.model_dir / f"models--{model_id.replace('/', '--')}"
+                    )
                     for snapshot_dir in (cache_dir / "snapshots").iterdir():
                         if snapshot_dir.is_dir():
                             file_path = snapshot_dir / filename
