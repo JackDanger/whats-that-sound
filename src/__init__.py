@@ -1,1 +1,1 @@
-# whats-that-sound - Organize music collections using local LLMs 
+# whats-that-sound - Organize music collections using local LLMs
