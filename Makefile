@@ -3,15 +3,6 @@
 install:
 	uv venv
 	uv pip install -e ".[dev]"
-	# Try to install prebuilt wheel first, fall back to building from source
-	uv pip install 'llama-cpp-python>=0.2.50' || GGML_CCACHE=OFF uv pip install 'llama-cpp-python>=0.2.50' --no-cache-dir
-	@echo ""
-	@echo "Installation complete!"
-	@echo "Note: To install with CUDA support (requires CUDA toolkit), run: make install-cuda"
-
-install-cuda:
-	uv venv
-	uv pip install -e ".[dev]"
 	CMAKE_ARGS="-DGGML_CUDA=on -DGGML_OPENMP=off" GGML_CCACHE=OFF uv pip install 'llama-cpp-python>=0.2.50' --force-reinstall --no-cache-dir
 	@echo ""
 	@echo "Installation complete with CUDA support!"
