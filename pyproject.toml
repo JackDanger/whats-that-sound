@@ -1,0 +1,33 @@
+[project]
+name = "whats-that-sound"
+version = "0.1.0"
+description = "Organize music collections using local LLMs"
+requires-python = ">=3.9"
+dependencies = [
+    "click>=8.0",
+    "rich>=13.0",
+    "mutagen>=1.47",
+    "huggingface-hub>=0.20",
+    "prompt-toolkit>=3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-mock>=3.0",
+    "black>=23.0",
+]
+cuda = [
+    "llama-cpp-python>=0.2.50",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[project.scripts]
+whats-that-sound = "src.cli:main"
