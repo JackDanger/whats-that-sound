@@ -270,8 +270,11 @@ class InteractiveUI:
         if summary.get("organized_albums"):
             self.console.print("\n[bold cyan]Organized Albums:[/bold cyan]")
             for album in summary["organized_albums"][:10]:
+                artist = album.get("artist", "Unknown Artist")
+                album_name = album.get("album", "Unknown Album")
+                year = album.get("year", "Unknown Year")
                 self.console.print(
-                    f"  ✓ {album['artist']} - {album['album']} ({album['year']})"
+                    f"  ✓ {artist} - {album_name} ({year})"
                 )
 
             if len(summary["organized_albums"]) > 10:
