@@ -1,15 +1,20 @@
-.PHONY: install test clean run-tests coverage lint format install-cuda
+.PHONY: install install-cuda test clean run-tests coverage lint format
 
 install:
 	uv venv
 	uv pip install -e ".[dev]"
+	# Try to install prebuilt wheel first, fall back to building from source
+	uv pip install 'llama-cpp-python>=0.2.50' || GGML_CCACHE=OFF uv pip install 'llama-cpp-python>=0.2.50' --no-cache-dir
 	@echo ""
-	@echo "Base installation complete!"
-	@echo "To install CUDA support for LLMs, run: make install-cuda"
+	@echo "Installation complete!"
+	@echo "Note: To install with CUDA support (requires CUDA toolkit), run: make install-cuda"
 
 install-cuda:
-	. .venv/bin/activate && CMAKE_ARGS="-DLLAMA_CUBLAS=on" pip install llama-cpp-python>=0.2.50
-	@echo "CUDA support installed!"
+	uv venv
+	uv pip install -e ".[dev]"
+	CMAKE_ARGS="-DGGML_CUDA=on -DGGML_OPENMP=off" GGML_CCACHE=OFF uv pip install 'llama-cpp-python>=0.2.50' --force-reinstall --no-cache-dir
+	@echo ""
+	@echo "Installation complete with CUDA support!"
 
 test:
 	. .venv/bin/activate && python -m pytest tests/ -v
@@ -30,8 +35,8 @@ run:
 
 help:
 	@echo "Available targets:"
-	@echo "  install      - Create virtual environment and install dependencies"
-	@echo "  install-cuda - Install CUDA support for LLMs (run after install)"
+	@echo "  install      - Create virtual environment and install dependencies (CPU version)"
+	@echo "  install-cuda - Install with CUDA support (requires CUDA toolkit)"
 	@echo "  test         - Run tests"
 	@echo "  test-cov     - Run tests with coverage"
 	@echo "  clean        - Clean up cache and temporary files"
