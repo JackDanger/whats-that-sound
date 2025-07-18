@@ -145,10 +145,10 @@ class TestProposalGeneratorIntegration:
 
     def test_invalid_json_response_parsing(self, generator, mock_llm):
         """Test handling of invalid JSON response from LLM."""
-        # Mock LLM to return invalid JSON
+        # Mock LLM to return invalid JSON (non-JSON text)
         mock_llm.return_value = {
             "choices": [{
-                "text": "artist: The Beatles\nalbum: Abbey Road\nyear: 1969\nrelease_type: Album"
+                "text": "This is not JSON at all, just plain text response"
             }]
         }
         
@@ -156,16 +156,23 @@ class TestProposalGeneratorIntegration:
             "folder_name": "Test Album",
             "total_files": 5,
             "files": [],
-            "analysis": {}
+            "analysis": {
+                "common_artist": "The Beatles",
+                "common_album": "Abbey Road", 
+                "common_year": "1969",
+                "likely_compilation": False
+            }
         }
         
         proposal = generator.get_llm_proposal(metadata)
         
-        # Should parse what it can from the text
-        assert proposal["artist"] == "The Beatles"
-        assert proposal["album"] == "Abbey Road"
-        assert proposal["year"] == "1969"
-        assert proposal["release_type"] == "Album"  # Should be extracted from text
+        # Should use fallback logic that prioritizes metadata analysis
+        assert proposal["artist"] == "The Beatles"  # From analysis.common_artist
+        assert proposal["album"] == "Abbey Road"    # From analysis.common_album
+        assert proposal["year"] == "1969"           # From analysis.common_year
+        assert proposal["release_type"] == "Album" # Default since not compilation
+        assert proposal["confidence"] == "low"     # Fallback confidence
+        assert "LLM unavailable" in proposal["reasoning"]
 
     def test_llm_failure_fallback(self, generator, mock_llm):
         """Test fallback behavior when LLM fails."""

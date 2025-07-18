@@ -56,8 +56,14 @@ class ProposalGenerator:
 
             # Try to extract JSON
             proposal = self._parse_llm_response(text)
-
-            return proposal
+            
+            # If JSON parsing succeeded, return the proposal
+            if proposal:
+                return proposal
+            
+            # If JSON parsing failed, use fallback logic
+            console.print("[yellow]Falling back to metadata-based proposal[/yellow]")
+            return self._fallback_proposal(metadata, artist_hint)
 
         except Exception as e:
             console.print(f"[red]Error getting LLM proposal: {e}[/red]")
@@ -84,25 +90,32 @@ class ProposalGenerator:
 
         prompt = """You are a music organization expert. Analyze the following music folder and suggest how to organize it.
 
+IMPORTANT: Use the detected metadata below as your PRIMARY source of information.
+
 Folder Information:
 - Folder Name: {folder_name}
 - Total Files: {total_files}
-- Detected Artist: {detected_artist}
-- Detected Album: {detected_album}
-- Detected Year: {detected_year}
+- **DETECTED ARTIST: {detected_artist}** ← USE THIS
+- **DETECTED ALBUM: {detected_album}** ← USE THIS  
+- **DETECTED YEAR: {detected_year}** ← USE THIS
 - Is Compilation: {is_compilation}
 - Track Pattern: {track_pattern}
 {artist_hint_section}
 
-Sample Files:
+Sample Files (showing consistent artist/title pattern):
 {file_samples}
 
 {user_feedback_section}
 
+INSTRUCTIONS: 
+- PRIORITIZE the detected artist, album, and year shown above
+- The sample files confirm the artist pattern
+- Only deviate from detected metadata if there's a clear error
+
 Based on this information, provide a JSON response with your best guess for:
-1. artist - The primary artist name
-2. album - The album title
-3. year - The release year (4 digits)
+1. artist - Use the DETECTED ARTIST unless clearly wrong
+2. album - Use the DETECTED ALBUM unless clearly wrong  
+3. year - Use the DETECTED YEAR unless clearly wrong
 4. release_type - One of: Album, EP, Single, Compilation, Live, Remix, Bootleg
 5. confidence - Your confidence level (low, medium, high)
 6. reasoning - Brief explanation of your decision
@@ -138,7 +151,7 @@ Provide ONLY the JSON response."""
         # Add artist hint if provided
         artist_hint_section = ""
         if artist_hint:
-            artist_hint_section = f"\n- Artist Hint: {artist_hint} (this folder is part of an artist collection)"
+            artist_hint_section = f"\n- **ARTIST HINT: {artist_hint}** ← This folder is part of an artist collection, USE THIS ARTIST NAME"
 
         return prompt.format(
             folder_name=metadata.get("folder_name", "Unknown"),
@@ -163,8 +176,8 @@ Provide ONLY the JSON response."""
             Dictionary containing the parsed proposal
         """
         try:
-            # Find JSON in response
-            json_match = re.search(r"\{[^}]+\}", text, re.DOTALL)
+            # Find JSON in response - fix the regex to capture complete JSON
+            json_match = re.search(r"\{.*\}", text, re.DOTALL)
             if json_match:
                 json_str = json_match.group(0)
                 proposal = json.loads(json_str)
@@ -173,33 +186,12 @@ Provide ONLY the JSON response."""
                 required = ["artist", "album", "year", "release_type"]
                 if all(field in proposal for field in required):
                     return proposal
-        except:
-            pass
+        except Exception as e:
+            console.print(f"[red]JSON parsing failed: {e}[/red]")
+            console.print(f"[dim]Raw LLM response: {text[:100]}...[/dim]")
 
-        # If parsing fails, extract what we can
-        lines = text.split("\n")
-        proposal = {
-            "artist": "Unknown Artist",
-            "album": "Unknown Album",
-            "year": "2023",
-            "release_type": "Album",
-            "confidence": "low",
-            "reasoning": text[:200],
-        }
-
-        # Try to extract from text
-        for line in lines:
-            lower_line = line.lower()
-            if "artist:" in lower_line:
-                proposal["artist"] = line.split(":", 1)[1].strip().strip("\"'")
-            elif "album:" in lower_line:
-                proposal["album"] = line.split(":", 1)[1].strip().strip("\"'")
-            elif "year:" in lower_line:
-                year_text = line.split(":", 1)[1].strip().strip("\"'")
-                if year_text.isdigit() and len(year_text) == 4:
-                    proposal["year"] = year_text
-
-        return proposal
+        # If parsing fails, return None so caller can handle fallback
+        return None
 
     def _fallback_proposal(self, metadata: Dict, artist_hint: Optional[str] = None) -> Dict:
         """Create a fallback proposal when LLM fails.
