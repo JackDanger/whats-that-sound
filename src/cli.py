@@ -54,7 +54,8 @@ def organize(source_dir: Path, target_dir: Path, model: str, batch_size: int):
 
 @cli.command()
 @click.option("--download", "-d", help="Download a specific model")
-def models(download: str):
+@click.option("--search", "-s", help="Search for models on Hugging Face")
+def models(download: str, search: str):
     """List downloaded models or download a new one."""
     model_manager = ModelManager()
 
@@ -65,6 +66,23 @@ def models(download: str):
             console.print(f"[green]✓ Model downloaded to: {model_path}[/green]")
         except Exception as e:
             console.print(f"[red]Error downloading model: {e}[/red]")
+            raise click.ClickException(str(e))
+    elif search:
+        console.print(f"[cyan]Searching for models matching: {search}[/cyan]")
+        try:
+            results = model_manager.search_models(search)
+            if results:
+                console.print(f"[green]Found {len(results)} models:[/green]")
+                for model in results:
+                    console.print(f"  • [bold]{model['id']}[/bold]")
+                    if model.get('description'):
+                        console.print(f"    {model['description']}")
+                    console.print(f"    Downloads: {model.get('downloads', 0):,}")
+                    console.print()
+            else:
+                console.print(f"[yellow]No models found matching '{search}'[/yellow]")
+        except Exception as e:
+            console.print(f"[red]Error searching models: {e}[/red]")
             raise click.ClickException(str(e))
     else:
         # List models

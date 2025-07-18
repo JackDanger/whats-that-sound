@@ -1,6 +1,4 @@
-def main():
-    print("Hello from whats-that-sound!")
-
+import src.cli
 
 if __name__ == "__main__":
-    main()
+    src.cli.main()

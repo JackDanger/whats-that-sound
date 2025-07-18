@@ -2,8 +2,8 @@
 
 import os
 from pathlib import Path
-from typing import List, Optional
-from huggingface_hub import hf_hub_download, HfFileSystem
+from typing import List, Optional, Dict
+from huggingface_hub import hf_hub_download, HfFileSystem, HfApi
 from rich.progress import (
     Progress,
     SpinnerColumn,
@@ -24,39 +24,90 @@ class ModelManager:
         """Initialize the model manager.
 
         Args:
-            model_dir: Directory to store models. Defaults to ~/.cache/whats-that-sound/models
+            model_dir: Custom directory to store models. Defaults to standard HF cache ~/.cache/huggingface/hub
         """
         if model_dir is None:
-            self.model_dir = Path.home() / ".cache" / "whats-that-sound" / "models"
+            # Use standard HF cache directory
+            self.model_dir = Path.home() / ".cache" / "huggingface" / "hub"
         else:
             self.model_dir = Path(model_dir)
 
         self.model_dir.mkdir(parents=True, exist_ok=True)
 
     def list_models(self) -> List[str]:
-        """List all downloaded GGUF models."""
+        """List all downloaded GGUF models in the HF cache."""
         models = []
         if self.model_dir.exists():
-            for file in self.model_dir.glob("**/*.gguf"):
-                # Get relative path from model_dir
-                relative_path = file.relative_to(self.model_dir)
-                models.append(str(relative_path))
+            # Scan HF cache structure: models--{org}--{model}/snapshots/{commit_hash}/
+            for model_dir in self.model_dir.glob("models--*"):
+                # Look in snapshots directory for the latest/main snapshot
+                snapshots_dir = model_dir / "snapshots"
+                if snapshots_dir.exists():
+                    # Get the most recent snapshot (or main if it exists)
+                    snapshot_dirs = list(snapshots_dir.iterdir())
+                    if snapshot_dirs:
+                        # Use the first snapshot found (HF manages versions)
+                        for snapshot_dir in snapshot_dirs:
+                            if snapshot_dir.is_dir():
+                                # Find GGUF files in this snapshot
+                                for gguf_file in snapshot_dir.glob("*.gguf"):
+                                    # Convert model dir name back to repo format
+                                    model_name = model_dir.name.replace("models--", "").replace("--", "/")
+                                    models.append(f"{model_name}/{gguf_file.name}")
+                                break
         return sorted(models)
 
+    def search_models(self, search_query: str, limit: int = 20) -> List[Dict]:
+        """Search for GGUF models on Hugging Face.
+
+        Args:
+            search_query: Search term to look for in model names
+            limit: Maximum number of results to return
+
+        Returns:
+            List of model information dictionaries
+        """
+        api = HfApi()
+        
+        try:
+            # Search for models with GGUF library and containing the search query
+            models = api.list_models(
+                search=search_query,
+                library="gguf",
+                limit=limit,
+                sort="downloads",
+                direction=-1
+            )
+            
+            results = []
+            for model in models:
+                # Extract useful information
+                model_info = {
+                    "id": model.id,
+                    "downloads": getattr(model, 'downloads', 0),
+                    "description": getattr(model, 'description', None),
+                    "tags": getattr(model, 'tags', []),
+                    "created_at": getattr(model, 'created_at', None),
+                    "updated_at": getattr(model, 'last_modified', None)
+                }
+                results.append(model_info)
+            
+            return results
+            
+        except Exception as e:
+            console.print(f"[red]Error searching models: {e}[/red]")
+            raise
+
     def download_model(self, model_id: str, filename: Optional[str] = None) -> Path:
-        """Download a GGUF model from Hugging Face.
+        """Download a GGUF model from Hugging Face to the standard HF cache.
 
         Args:
             model_id: HuggingFace model ID (e.g., "TheBloke/Llama-2-7B-GGUF")
             filename: Specific GGUF file to download. If None, downloads the first GGUF found.
 
         Returns:
-            Path to the downloaded model file
+            Path to the downloaded model file in the HF cache
         """
-        # Create subdirectory for this model
-        model_subdir = self.model_dir / model_id.replace("/", "_")
-        model_subdir.mkdir(parents=True, exist_ok=True)
-
         try:
             if filename is None:
                 # Find the first GGUF file in the repository
@@ -79,15 +130,7 @@ class ModelManager:
 
                 console.print(f"[green]Found GGUF file: {filename}[/green]")
 
-            # Check if already downloaded
-            local_path = model_subdir / filename
-            if local_path.exists():
-                console.print(
-                    f"[yellow]Model already downloaded: {local_path}[/yellow]"
-                )
-                return local_path
-
-            # Download with progress bar
+            # Download with progress bar - let HF handle the caching
             console.print(f"[cyan]Downloading {filename} from {model_id}...[/cyan]")
 
             with Progress(
@@ -108,11 +151,10 @@ class ModelManager:
                             download_task, completed=progress_info["downloaded"]
                         )
 
+                # Use standard HF cache - no custom local_dir
                 downloaded_path = hf_hub_download(
                     repo_id=model_id,
                     filename=filename,
-                    local_dir=model_subdir,
-                    local_dir_use_symlinks=False,
                     resume_download=True,
                 )
 
@@ -137,7 +179,22 @@ class ModelManager:
 
         # Check exact match
         if model_spec in local_models:
-            return self.model_dir / model_spec
+            # Find the actual file path in HF cache
+            for model in local_models:
+                if model == model_spec:
+                    # Extract model_id and filename from the model spec
+                    parts = model.split("/")
+                    if len(parts) >= 2:
+                        model_id = "/".join(parts[:-1])
+                        filename = parts[-1]
+                        # Find the file in HF cache
+                        cache_dir = self.model_dir / f"models--{model_id.replace('/', '--')}"
+                        for snapshot_dir in (cache_dir / "snapshots").iterdir():
+                            if snapshot_dir.is_dir():
+                                file_path = snapshot_dir / filename
+                                if file_path.exists():
+                                    return file_path
+                    break
 
         # Check if it's a path to a local file
         if Path(model_spec).exists() and model_spec.endswith(".gguf"):
@@ -146,7 +203,18 @@ class ModelManager:
         # Check partial match (just the filename)
         for model in local_models:
             if Path(model).name == model_spec or model_spec in str(model):
-                return self.model_dir / model
+                # Find the actual file path in HF cache
+                parts = model.split("/")
+                if len(parts) >= 2:
+                    model_id = "/".join(parts[:-1])
+                    filename = parts[-1]
+                    # Find the file in HF cache
+                    cache_dir = self.model_dir / f"models--{model_id.replace('/', '--')}"
+                    for snapshot_dir in (cache_dir / "snapshots").iterdir():
+                        if snapshot_dir.is_dir():
+                            file_path = snapshot_dir / filename
+                            if file_path.exists():
+                                return file_path
 
         # If not found locally, try to download from HuggingFace
         if "/" in model_spec:
