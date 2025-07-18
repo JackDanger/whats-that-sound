@@ -57,6 +57,66 @@ class InteractiveUI:
 
         self.console.print(table)
 
+    def display_structure_analysis(self, structure: Dict):
+        """Display directory structure analysis."""
+        # Create structure overview table
+        table = Table(
+            title=f"📂 Directory Structure: {structure['folder_name']}",
+            show_header=True,
+            header_style="bold magenta",
+        )
+        table.add_column("Property", style="dim", width=25)
+        table.add_column("Value", style="white")
+
+        table.add_row("Total Music Files", str(structure["total_music_files"]))
+        table.add_row("Direct Music Files", str(structure["direct_music_files"]))
+        table.add_row("Subdirectories", str(len(structure["subdirectories"])))
+        table.add_row("Max Depth", str(structure["max_depth"]))
+
+        self.console.print(table)
+
+        # Display subdirectory details if any
+        if structure["subdirectories"]:
+            subdir_table = Table(
+                title="📁 Subdirectories", show_header=True, header_style="bold blue"
+            )
+            subdir_table.add_column("Name", style="white")
+            subdir_table.add_column("Music Files", style="green")
+            subdir_table.add_column("Subdirs", style="yellow")
+
+            for subdir in structure["subdirectories"][:10]:  # Show first 10
+                subdir_table.add_row(
+                    subdir["name"],
+                    str(subdir["music_files"]),
+                    str(len(subdir["subdirectories"])),
+                )
+
+            if len(structure["subdirectories"]) > 10:
+                subdir_table.add_row(
+                    f"... {len(structure['subdirectories']) - 10} more",
+                    "-",
+                    "-",
+                    style="dim",
+                )
+
+            self.console.print(subdir_table)
+
+        # Display directory tree (truncated if too long)
+        tree_lines = structure["directory_tree"].split("\n")
+        if len(tree_lines) > 20:
+            tree_preview = "\n".join(tree_lines[:20]) + "\n... (truncated)"
+        else:
+            tree_preview = structure["directory_tree"]
+
+        if tree_preview:
+            tree_panel = Panel(
+                tree_preview,
+                title="🌳 Directory Tree",
+                border_style="green",
+                expand=False,
+            )
+            self.console.print(tree_panel)
+
     def display_file_samples(self, files_metadata: List[Dict], max_files: int = 5):
         """Display a sample of files from the folder."""
         self.console.print("\n[bold cyan]Sample Files:[/bold cyan]")
