@@ -3,9 +3,9 @@
 install:
 	uv venv
 	uv pip install -e ".[dev]"
-	export CUDA_HOME=/usr/local/cuda-12.9 && \
-	export PATH=/usr/local/cuda-12.9/bin:$$PATH && \
-	CMAKE_ARGS="-DGGML_CUDA=on -DGGML_OPENMP=off -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.9/bin/nvcc -DCUDA_ARCHITECTURES=75" GGML_CCACHE=OFF uv pip install 'llama-cpp-python>=0.2.50' --force-reinstall --no-cache-dir
+	export CUDA_HOME=/usr/local/cuda && \
+	export PATH=/usr/local/cuda/bin:$$PATH && \
+	CMAKE_ARGS="-DGGML_CUDA=on -DGGML_OPENMP=off -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc" GGML_CCACHE=OFF uv pip install 'llama-cpp-python>=0.2.50' --force-reinstall --no-cache-dir
 	@echo ""
 	@echo "Installation complete with CUDA support!"
 
