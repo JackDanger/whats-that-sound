@@ -26,8 +26,7 @@ run:
 
 help:
 	@echo "Available targets:"
-	@echo "  install      - Create virtual environment and install dependencies (CPU version)"
-	@echo "  install-cuda - Install with CUDA support (requires CUDA toolkit)"
+	@echo "  install      - Create virtual environment and install dependencies (requires CUDA)"
 	@echo "  test         - Run tests"
 	@echo "  test-cov     - Run tests with coverage"
 	@echo "  clean        - Clean up cache and temporary files"
