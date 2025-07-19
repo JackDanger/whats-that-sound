@@ -85,7 +85,9 @@ class MusicOrganizer:
             return
 
         # Filter out already organized folders
-        unorganized_folders, organized_count = self.state_manager.filter_unorganized_folders(folders)
+        unorganized_folders, organized_count = (
+            self.state_manager.filter_unorganized_folders(folders)
+        )
 
         if organized_count > 0:
             console.print(
@@ -107,7 +109,9 @@ class MusicOrganizer:
 
                 # Analyze directory structure
                 console.print("\n[cyan]Analyzing directory structure...[/cyan]")
-                structure_analysis = self.directory_analyzer.analyze_directory_structure(folder)
+                structure_analysis = (
+                    self.directory_analyzer.analyze_directory_structure(folder)
+                )
 
                 if structure_analysis["total_music_files"] == 0:
                     console.print(
@@ -120,11 +124,15 @@ class MusicOrganizer:
                 self.ui.display_structure_analysis(structure_analysis)
 
                 # Classify structure type
-                structure_type = self.structure_classifier.classify_directory_structure(structure_analysis)
+                structure_type = self.structure_classifier.classify_directory_structure(
+                    structure_analysis
+                )
                 console.print(f"[cyan]Detected structure type: {structure_type}[/cyan]")
 
                 # Process based on structure type
-                success = self._process_folder_by_type(folder, structure_type, structure_analysis)
+                success = self._process_folder_by_type(
+                    folder, structure_type, structure_analysis
+                )
 
                 # Update progress
                 self.progress_tracker.increment_processed()
@@ -143,19 +151,23 @@ class MusicOrganizer:
         # Display completion summary
         self.ui.display_completion_summary(self.progress_tracker.get_stats())
 
-    def _process_folder_by_type(self, folder: Path, structure_type: str, structure_analysis: dict) -> bool:
+    def _process_folder_by_type(
+        self, folder: Path, structure_type: str, structure_analysis: dict
+    ) -> bool:
         """Process a folder based on its classified structure type.
-        
+
         Args:
             folder: Folder to process
             structure_type: Detected structure type
             structure_analysis: Directory structure analysis
-            
+
         Returns:
             True if successfully processed, False otherwise
         """
         if structure_type == "single_album":
-            success = self.album_processor.process_single_album(folder, structure_analysis)
+            success = self.album_processor.process_single_album(
+                folder, structure_analysis
+            )
             if success:
                 # Get the proposal from the state manager for stats
                 tracker_data = self.state_manager.load_tracker_data(folder)
@@ -164,7 +176,9 @@ class MusicOrganizer:
             return success
 
         elif structure_type == "multi_disc_album":
-            success = self.album_processor.process_multi_disc_album(folder, structure_analysis)
+            success = self.album_processor.process_multi_disc_album(
+                folder, structure_analysis
+            )
             if success:
                 # Get the proposal from the state manager for stats
                 tracker_data = self.state_manager.load_tracker_data(folder)
@@ -173,7 +187,9 @@ class MusicOrganizer:
             return success
 
         elif structure_type == "artist_collection":
-            success = self.collection_processor.process_artist_collection(folder, structure_analysis)
+            success = self.collection_processor.process_artist_collection(
+                folder, structure_analysis
+            )
             if success:
                 # Get the albums from the state manager for stats
                 tracker_data = self.state_manager.load_tracker_data(folder)

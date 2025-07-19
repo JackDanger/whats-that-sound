@@ -14,7 +14,7 @@ class ProposalGenerator:
 
     def __init__(self, llm: Llama):
         """Initialize the proposal generator.
-        
+
         Args:
             llm: Initialized Llama model for proposal generation
         """
@@ -27,12 +27,12 @@ class ProposalGenerator:
         artist_hint: Optional[str] = None,
     ) -> Dict:
         """Get organization proposal from the LLM.
-        
+
         Args:
             metadata: Folder metadata from DirectoryAnalyzer
             user_feedback: Optional user feedback for reconsideration
             artist_hint: Optional artist hint for collections
-            
+
         Returns:
             Dictionary containing the proposal
         """
@@ -56,11 +56,11 @@ class ProposalGenerator:
 
             # Try to extract JSON
             proposal = self._parse_llm_response(text)
-            
+
             # If JSON parsing succeeded, return the proposal
             if proposal:
                 return proposal
-            
+
             # If JSON parsing failed, use fallback logic
             console.print("[yellow]Falling back to metadata-based proposal[/yellow]")
             return self._fallback_proposal(metadata, artist_hint)
@@ -77,12 +77,12 @@ class ProposalGenerator:
         artist_hint: Optional[str] = None,
     ) -> str:
         """Build prompt for the LLM.
-        
+
         Args:
             metadata: Folder metadata
             user_feedback: Optional user feedback
             artist_hint: Optional artist hint
-            
+
         Returns:
             Formatted prompt string
         """
@@ -168,10 +168,10 @@ Provide ONLY the JSON response."""
 
     def _parse_llm_response(self, text: str) -> Dict:
         """Parse LLM response to extract proposal.
-        
+
         Args:
             text: Raw LLM response text
-            
+
         Returns:
             Dictionary containing the parsed proposal
         """
@@ -193,13 +193,15 @@ Provide ONLY the JSON response."""
         # If parsing fails, return None so caller can handle fallback
         return None
 
-    def _fallback_proposal(self, metadata: Dict, artist_hint: Optional[str] = None) -> Dict:
+    def _fallback_proposal(
+        self, metadata: Dict, artist_hint: Optional[str] = None
+    ) -> Dict:
         """Create a fallback proposal when LLM fails.
-        
+
         Args:
             metadata: Folder metadata
             artist_hint: Optional artist hint
-            
+
         Returns:
             Dictionary containing fallback proposal
         """
@@ -219,4 +221,4 @@ Provide ONLY the JSON response."""
             ),
             "confidence": "low",
             "reasoning": "Based on metadata analysis only (LLM unavailable)",
-        } 
+        }

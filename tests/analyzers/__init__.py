@@ -1,1 +1,1 @@
-"""Test package for analyzer components.""" 
+"""Test package for analyzer components."""

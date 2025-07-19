@@ -1,1 +1,1 @@
-"""Test package for processor components.""" 
+"""Test package for processor components."""

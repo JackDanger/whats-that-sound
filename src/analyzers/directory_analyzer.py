@@ -15,10 +15,10 @@ class DirectoryAnalyzer:
 
     def analyze_directory_structure(self, folder: Path) -> Dict:
         """Analyze the directory structure and return detailed information.
-        
+
         Args:
             folder: Path to the folder to analyze
-            
+
         Returns:
             Dictionary containing structure analysis
         """
@@ -43,7 +43,7 @@ class DirectoryAnalyzer:
         self, path: Path, tree_lines: List[str], prefix: str, depth: int, analysis: Dict
     ):
         """Recursively build a tree representation of the directory structure.
-        
+
         Args:
             path: Current path being processed
             tree_lines: List to accumulate tree lines
@@ -108,11 +108,11 @@ class DirectoryAnalyzer:
 
     def extract_folder_metadata(self, folder: Path) -> Dict:
         """Extract metadata from all music files in a folder.
-        
+
         Args:
             folder: Path to the folder to analyze
-            
+
         Returns:
             Dictionary containing folder metadata
         """
-        return self.metadata_extractor.extract_folder_metadata(folder) 
+        return self.metadata_extractor.extract_folder_metadata(folder)

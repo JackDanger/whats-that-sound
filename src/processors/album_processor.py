@@ -25,7 +25,7 @@ class AlbumProcessor:
         ui: InteractiveUI,
     ):
         """Initialize the album processor.
-        
+
         Args:
             directory_analyzer: DirectoryAnalyzer instance
             proposal_generator: ProposalGenerator instance
@@ -41,11 +41,11 @@ class AlbumProcessor:
 
     def process_single_album(self, folder: Path, structure_analysis: Dict) -> bool:
         """Process a single album directory.
-        
+
         Args:
             folder: Album folder to process
             structure_analysis: Directory structure analysis
-            
+
         Returns:
             True if successfully processed, False otherwise
         """
@@ -61,11 +61,11 @@ class AlbumProcessor:
 
     def process_multi_disc_album(self, folder: Path, structure_analysis: Dict) -> bool:
         """Process a multi-disc album directory.
-        
+
         Args:
             folder: Multi-disc album folder to process
             structure_analysis: Directory structure analysis
-            
+
         Returns:
             True if successfully processed, False otherwise
         """
@@ -81,11 +81,11 @@ class AlbumProcessor:
 
     def _process_album_interactive(self, folder: Path, metadata: Dict) -> bool:
         """Handle interactive processing for an album.
-        
+
         Args:
             folder: Album folder
             metadata: Extracted metadata
-            
+
         Returns:
             True if successfully processed, False otherwise
         """
@@ -121,4 +121,4 @@ class AlbumProcessor:
 
             elif feedback["action"] == "cancel":
                 console.print("[red]Cancelling organization...[/red]")
-                return False 
+                return False

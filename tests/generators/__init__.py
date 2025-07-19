@@ -1,1 +1,1 @@
-"""Test package for generator components.""" 
+"""Test package for generator components."""

@@ -25,7 +25,7 @@ class CollectionProcessor:
         ui: InteractiveUI,
     ):
         """Initialize the collection processor.
-        
+
         Args:
             directory_analyzer: DirectoryAnalyzer instance
             proposal_generator: ProposalGenerator instance
@@ -41,11 +41,11 @@ class CollectionProcessor:
 
     def process_artist_collection(self, folder: Path, structure_analysis: Dict) -> bool:
         """Process an artist collection directory with multiple albums.
-        
+
         Args:
             folder: Artist collection folder to process
             structure_analysis: Directory structure analysis
-            
+
         Returns:
             True if any albums were successfully processed, False otherwise
         """
@@ -89,12 +89,12 @@ class CollectionProcessor:
         self, album_folder: Path, metadata: Dict, artist_hint: str
     ) -> Dict:
         """Process an individual album within a collection.
-        
+
         Args:
             album_folder: Album folder to process
             metadata: Extracted metadata
             artist_hint: Artist name hint from collection folder
-            
+
         Returns:
             Proposal dict if successful, None if skipped/cancelled
         """
@@ -129,4 +129,4 @@ class CollectionProcessor:
 
             elif feedback["action"] == "cancel":
                 console.print("[red]Cancelling organization...[/red]")
-                return None 
+                return None

@@ -22,9 +22,7 @@ class TestStructureClassifier:
     def test_classify_directory_structure_with_llm_success(self, classifier, mock_llm):
         """Test successful LLM-based directory structure classification."""
         # Mock LLM to return specific classification
-        mock_llm.return_value = {
-            "choices": [{"text": "multi_disc_album"}]
-        }
+        mock_llm.return_value = {"choices": [{"text": "multi_disc_album"}]}
 
         structure = {
             "folder_name": "Test Album",
@@ -35,20 +33,20 @@ class TestStructureClassifier:
                 {"name": "Disc 2", "music_files": 10, "subdirectories": []},
             ],
             "max_depth": 1,
-            "directory_tree": "Test tree"
+            "directory_tree": "Test tree",
         }
 
         classification = classifier.classify_directory_structure(structure)
-        
+
         assert classification == "multi_disc_album"
         mock_llm.assert_called_once()
 
-    def test_classify_directory_structure_with_llm_invalid_response(self, classifier, mock_llm):
+    def test_classify_directory_structure_with_llm_invalid_response(
+        self, classifier, mock_llm
+    ):
         """Test classification with invalid LLM response falls back to heuristics."""
         # Mock LLM to return invalid classification
-        mock_llm.return_value = {
-            "choices": [{"text": "invalid_classification"}]
-        }
+        mock_llm.return_value = {"choices": [{"text": "invalid_classification"}]}
 
         structure = {
             "folder_name": "Test Album",
@@ -56,11 +54,11 @@ class TestStructureClassifier:
             "direct_music_files": 10,
             "subdirectories": [],
             "max_depth": 0,
-            "directory_tree": "Test tree"
+            "directory_tree": "Test tree",
         }
 
         classification = classifier.classify_directory_structure(structure)
-        
+
         # Should fall back to heuristic classification
         assert classification == "single_album"
 
@@ -75,11 +73,11 @@ class TestStructureClassifier:
             "direct_music_files": 10,
             "subdirectories": [],
             "max_depth": 0,
-            "directory_tree": "Test tree"
+            "directory_tree": "Test tree",
         }
 
         classification = classifier.classify_directory_structure(structure)
-        
+
         # Should fall back to heuristic classification
         assert classification == "single_album"
 
@@ -161,7 +159,7 @@ class TestStructureClassifier:
         ]
 
         result = classifier._format_subdirectories(subdirs)
-        
+
         assert "Album 1: 10 music files, 0 subdirs" in result
         assert "Album 2: 15 music files, 1 subdirs" in result
 
@@ -169,14 +167,12 @@ class TestStructureClassifier:
         """Test formatting of large subdirectories list gets truncated."""
         subdirs = []
         for i in range(15):  # More than 10 to test truncation
-            subdirs.append({
-                "name": f"Album {i}",
-                "music_files": 10 + i,
-                "subdirectories": []
-            })
+            subdirs.append(
+                {"name": f"Album {i}", "music_files": 10 + i, "subdirectories": []}
+            )
 
         result = classifier._format_subdirectories(subdirs)
-        
+
         assert "Album 0: 10 music files, 0 subdirs" in result
         assert "Album 9: 19 music files, 0 subdirs" in result
         assert "... and 5 more subdirectories" in result
@@ -192,17 +188,17 @@ class TestStructureClassifier:
                 {"name": "CD2", "music_files": 10, "subdirectories": []},
             ],
             "max_depth": 1,
-            "directory_tree": "Test Album\n├── CD1\n└── CD2"
+            "directory_tree": "Test Album\n├── CD1\n└── CD2",
         }
 
         prompt = classifier._build_classification_prompt(structure)
-        
+
         assert "Test Album" in prompt
         assert "20" in prompt  # total music files
-        assert "0" in prompt   # direct music files
-        assert "2" in prompt   # number of subdirectories
+        assert "0" in prompt  # direct music files
+        assert "2" in prompt  # number of subdirectories
         assert "CD1: 10 music files, 0 subdirs" in prompt
         assert "CD2: 10 music files, 0 subdirs" in prompt
         assert "single_album" in prompt
         assert "multi_disc_album" in prompt
-        assert "artist_collection" in prompt 
+        assert "artist_collection" in prompt

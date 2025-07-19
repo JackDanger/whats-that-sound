@@ -17,10 +17,10 @@ class StateManager:
 
     def is_already_organized(self, folder: Path) -> bool:
         """Check if a folder has already been organized.
-        
+
         Args:
             folder: Folder to check
-            
+
         Returns:
             True if folder is already organized
         """
@@ -29,10 +29,10 @@ class StateManager:
 
     def filter_unorganized_folders(self, folders: List[Path]) -> tuple[List[Path], int]:
         """Filter out already organized folders.
-        
+
         Args:
             folders: List of folders to filter
-            
+
         Returns:
             Tuple of (unorganized_folders, organized_count)
         """
@@ -50,7 +50,7 @@ class StateManager:
 
     def save_proposal_tracker(self, source_folder: Path, proposal: Dict):
         """Save the accepted proposal to a tracker file.
-        
+
         Args:
             source_folder: Source folder that was organized
             proposal: The accepted proposal
@@ -66,13 +66,15 @@ class StateManager:
         try:
             with open(tracker_file, "w", encoding="utf-8") as f:
                 json.dump(tracker_data, f, indent=2, ensure_ascii=False)
-            console.print(f"[dim]Saved organization record to {tracker_file.name}[/dim]")
+            console.print(
+                f"[dim]Saved organization record to {tracker_file.name}[/dim]"
+            )
         except Exception as e:
             console.print(f"[red]Warning: Could not save tracker file: {e}[/red]")
 
     def save_collection_tracker(self, folder: Path, albums: List[Dict]):
         """Save tracker file for an artist collection.
-        
+
         Args:
             folder: Artist collection folder
             albums: List of successfully organized albums
@@ -95,15 +97,15 @@ class StateManager:
 
     def load_tracker_data(self, folder: Path) -> Dict:
         """Load tracker data for a folder.
-        
+
         Args:
             folder: Folder to load tracker data for
-            
+
         Returns:
             Dictionary containing tracker data or empty dict if not found
         """
         tracker_file = folder / ".whats-that-sound"
-        
+
         if not tracker_file.exists():
             return {}
 
@@ -112,4 +114,4 @@ class StateManager:
                 return json.load(f)
         except Exception as e:
             console.print(f"[red]Error loading tracker file: {e}[/red]")
-            return {} 
+            return {}

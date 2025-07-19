@@ -18,7 +18,7 @@ class TestDirectoryAnalyzer:
 
     def test_analyze_directory_structure_single_album(self, analyzer, tmp_path):
         """Test directory structure analysis for single album."""
-        with patch.object(MetadataExtractor, 'SUPPORTED_FORMATS', [".mp3", ".flac"]):
+        with patch.object(MetadataExtractor, "SUPPORTED_FORMATS", [".mp3", ".flac"]):
             # Create test folder structure
             test_folder = tmp_path / "test_album"
             test_folder.mkdir()
@@ -38,7 +38,7 @@ class TestDirectoryAnalyzer:
 
     def test_analyze_directory_structure_multi_disc(self, analyzer, tmp_path):
         """Test directory structure analysis for multi-disc album."""
-        with patch.object(MetadataExtractor, 'SUPPORTED_FORMATS', [".mp3", ".flac"]):
+        with patch.object(MetadataExtractor, "SUPPORTED_FORMATS", [".mp3", ".flac"]):
             # Create test folder structure
             test_folder = tmp_path / "test_album"
             test_folder.mkdir()
@@ -68,7 +68,7 @@ class TestDirectoryAnalyzer:
 
     def test_analyze_directory_structure_artist_collection(self, analyzer, tmp_path):
         """Test directory structure analysis for artist collection."""
-        with patch.object(MetadataExtractor, 'SUPPORTED_FORMATS', [".mp3", ".flac"]):
+        with patch.object(MetadataExtractor, "SUPPORTED_FORMATS", [".mp3", ".flac"]):
             # Create test folder structure
             test_folder = tmp_path / "Artist Name"
             test_folder.mkdir()
@@ -109,7 +109,7 @@ class TestDirectoryAnalyzer:
 
     def test_analyze_deep_directory_structure(self, analyzer, tmp_path):
         """Test analysis of deeply nested directory structure."""
-        with patch.object(MetadataExtractor, 'SUPPORTED_FORMATS', [".mp3"]):
+        with patch.object(MetadataExtractor, "SUPPORTED_FORMATS", [".mp3"]):
             # Create deep structure
             test_folder = tmp_path / "deep_structure"
             test_folder.mkdir()
@@ -136,7 +136,9 @@ class TestDirectoryAnalyzer:
         test_folder.mkdir()
 
         # Mock permission error
-        with patch.object(Path, 'iterdir', side_effect=PermissionError("Access denied")):
+        with patch.object(
+            Path, "iterdir", side_effect=PermissionError("Access denied")
+        ):
             analysis = analyzer.analyze_directory_structure(test_folder)
 
             assert analysis["folder_name"] == "test_folder"
@@ -148,10 +150,12 @@ class TestDirectoryAnalyzer:
         test_folder.mkdir()
 
         # Mock the metadata extractor
-        with patch.object(analyzer.metadata_extractor, 'extract_folder_metadata') as mock_extract:
+        with patch.object(
+            analyzer.metadata_extractor, "extract_folder_metadata"
+        ) as mock_extract:
             mock_extract.return_value = {"test": "metadata"}
 
             result = analyzer.extract_folder_metadata(test_folder)
 
             mock_extract.assert_called_once_with(test_folder)
-            assert result == {"test": "metadata"} 
+            assert result == {"test": "metadata"}

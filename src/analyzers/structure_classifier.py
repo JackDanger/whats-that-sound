@@ -12,7 +12,7 @@ class StructureClassifier:
 
     def __init__(self, llm: Llama):
         """Initialize the structure classifier.
-        
+
         Args:
             llm: Initialized Llama model for classification
         """
@@ -20,10 +20,10 @@ class StructureClassifier:
 
     def classify_directory_structure(self, structure_analysis: Dict) -> str:
         """Classify the directory structure type using LLM with heuristic fallback.
-        
+
         Args:
             structure_analysis: Directory structure analysis from DirectoryAnalyzer
-            
+
         Returns:
             One of: "single_album", "multi_disc_album", "artist_collection"
         """
@@ -56,10 +56,10 @@ class StructureClassifier:
 
     def _build_classification_prompt(self, structure_analysis: Dict) -> str:
         """Build prompt for LLM structure classification.
-        
+
         Args:
             structure_analysis: Directory structure analysis
-            
+
         Returns:
             Formatted prompt string
         """
@@ -90,10 +90,10 @@ Respond with ONLY the classification (one of the three options above)."""
 
     def _format_subdirectories(self, subdirectories: list) -> str:
         """Format subdirectory information for the prompt.
-        
+
         Args:
             subdirectories: List of subdirectory info dictionaries
-            
+
         Returns:
             Formatted string describing subdirectories
         """
@@ -114,10 +114,10 @@ Respond with ONLY the classification (one of the three options above)."""
 
     def _heuristic_classification(self, structure_analysis: Dict) -> str:
         """Fallback heuristic classification when LLM fails.
-        
+
         Args:
             structure_analysis: Directory structure analysis
-            
+
         Returns:
             Classification string
         """
@@ -145,4 +145,4 @@ Respond with ONLY the classification (one of the three options above)."""
             return "artist_collection"
 
         # Default to single album
-        return "single_album" 
+        return "single_album"

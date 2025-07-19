@@ -3,4 +3,4 @@
 from .directory_analyzer import DirectoryAnalyzer
 from .structure_classifier import StructureClassifier
 
-__all__ = ["DirectoryAnalyzer", "StructureClassifier"] 
+__all__ = ["DirectoryAnalyzer", "StructureClassifier"]

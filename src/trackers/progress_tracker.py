@@ -22,7 +22,7 @@ class ProgressTracker:
 
     def increment_successful(self, proposal: Dict):
         """Increment successful counter and add album.
-        
+
         Args:
             proposal: The successful organization proposal
         """
@@ -39,7 +39,7 @@ class ProgressTracker:
 
     def add_successful_albums(self, albums: List[Dict]):
         """Add multiple successful albums to the stats.
-        
+
         Args:
             albums: List of successful album proposals
         """
@@ -48,7 +48,7 @@ class ProgressTracker:
 
     def get_stats(self) -> Dict:
         """Get current statistics.
-        
+
         Returns:
             Dictionary containing current stats
         """
@@ -62,4 +62,4 @@ class ProgressTracker:
             "skipped": 0,
             "errors": 0,
             "organized_albums": [],
-        } 
+        }

@@ -15,7 +15,7 @@ class FileOrganizer:
 
     def __init__(self, target_dir: Path):
         """Initialize the file organizer.
-        
+
         Args:
             target_dir: Target directory for organized music
         """
@@ -23,11 +23,11 @@ class FileOrganizer:
 
     def organize_folder(self, source_folder: Path, proposal: Dict) -> int:
         """Organize a folder based on the accepted proposal.
-        
+
         Args:
             source_folder: Source folder to organize
             proposal: Organization proposal with artist, album, year, etc.
-            
+
         Returns:
             Number of files copied
         """
@@ -61,15 +61,15 @@ class FileOrganizer:
         console.print(
             f"[green]✓ Organized {copied} files to: {album_dir.relative_to(self.target_dir)}[/green]"
         )
-        
+
         return copied
 
     def _sanitize_filename(self, name: str) -> str:
         """Sanitize a string for use as a filename.
-        
+
         Args:
             name: Original filename
-            
+
         Returns:
             Sanitized filename
         """
@@ -79,4 +79,4 @@ class FileOrganizer:
             name = name.replace(char, "_")
 
         # Limit length
-        return name[:120].strip() 
+        return name[:120].strip()
