@@ -1,8 +1,10 @@
 .PHONY: install install-cuda test clean run-tests coverage lint format
 
-install:
+sync:
 	uv venv
 	uv pip install -e ".[dev]"
+
+install: sync
 	export CUDA_HOME=/usr/local/cuda && \
 	export PATH=/usr/local/cuda/bin:$$PATH && \
 	CMAKE_ARGS="-DGGML_CUDA=on -DGGML_OPENMP=off -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc" GGML_CCACHE=OFF uv pip install 'llama-cpp-python>=0.2.50' --force-reinstall --no-cache-dir
