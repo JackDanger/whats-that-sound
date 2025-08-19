@@ -40,6 +40,7 @@ class ProposalGenerator:
 
         # Build prompt
         prompt = self._build_prompt(metadata, user_feedback, artist_hint)
+        print(prompt)
 
         # Get LLM response
         try:
@@ -53,6 +54,7 @@ class ProposalGenerator:
 
             # Parse response
             text = response["choices"][0]["text"].strip()
+            print(text)
 
             # Try to extract JSON
             proposal = self._parse_llm_response(text)
@@ -66,6 +68,7 @@ class ProposalGenerator:
             return self._fallback_proposal(metadata, artist_hint)
 
         except Exception as e:
+            print(e)
             console.print(f"[red]Error getting LLM proposal: {e}[/red]")
             # Return a basic proposal based on metadata analysis
             return self._fallback_proposal(metadata, artist_hint)

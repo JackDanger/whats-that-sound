@@ -37,9 +37,8 @@ class InteractiveUI:
         table.add_column("Value", style="white")
 
         table.add_row("Total Music Files", str(total_files))
-        table.add_row(
-            "Subdirectories", ", ".join(metadata.get("subdirectories", [])) or "None"
-        )
+        subdirs = metadata.get("subdirectories", [])
+        table.add_row("Subdirectories", str(len(subdirs)))
 
         # Add analysis info
         analysis = metadata.get("analysis", {})
@@ -75,7 +74,7 @@ class InteractiveUI:
 
         self.console.print(table)
 
-        # Display subdirectory details if any
+        # Display subdirectory details if any (limit for brevity)
         if structure["subdirectories"]:
             subdir_table = Table(
                 title="📁 Subdirectories", show_header=True, header_style="bold blue"
@@ -84,16 +83,16 @@ class InteractiveUI:
             subdir_table.add_column("Music Files", style="green")
             subdir_table.add_column("Subdirs", style="yellow")
 
-            for subdir in structure["subdirectories"][:10]:  # Show first 10
+            for subdir in structure["subdirectories"][:5]:  # Show first 5
                 subdir_table.add_row(
                     subdir["name"],
                     str(subdir["music_files"]),
                     str(len(subdir["subdirectories"])),
                 )
 
-            if len(structure["subdirectories"]) > 10:
+            if len(structure["subdirectories"]) > 5:
                 subdir_table.add_row(
-                    f"... {len(structure['subdirectories']) - 10} more",
+                    f"... {len(structure['subdirectories']) - 5} more",
                     "-",
                     "-",
                     style="dim",
@@ -119,7 +118,7 @@ class InteractiveUI:
 
     def display_file_samples(self, files_metadata: List[Dict], max_files: int = 5):
         """Display a sample of files from the folder."""
-        self.console.print("\n[bold cyan]Sample Files:[/bold cyan]")
+        self.console.print("[bold cyan]Files:[/bold cyan]")
 
         # Show first few files
         for i, file_meta in enumerate(files_metadata[:max_files]):
@@ -133,41 +132,38 @@ class InteractiveUI:
                 )
                 artist = file_meta.get("artist", "Unknown Artist")
                 title = file_meta.get("title", "Unknown Title")
-                self.console.print(f"  🎵 {path}")
-                self.console.print(f"     → {artist} - {title}", style="dim")
+                self.console.print(f"  🎵 {path} — {artist} - {title}")
 
         if len(files_metadata) > max_files:
             self.console.print(
-                f"  ... and {len(files_metadata) - max_files} more files\n"
+                f"  ... and {len(files_metadata) - max_files} more files"
             )
 
     def display_llm_proposal(self, proposal: Dict):
         """Display the LLM's proposal for organization."""
-        panel = Panel(
-            f"[bold yellow]Artist:[/bold yellow] {proposal.get('artist', 'Unknown')}\n"
-            f"[bold yellow]Album:[/bold yellow] {proposal.get('album', 'Unknown')}\n"
-            f"[bold yellow]Year:[/bold yellow] {proposal.get('year', 'Unknown')}\n"
-            f"[bold yellow]Release Type:[/bold yellow] {proposal.get('release_type', 'Album')}",
-            title="🤖 AI Proposal",
-            border_style="yellow",
+        summary = (
+            f"{proposal.get('artist', 'Unknown')} — {proposal.get('album', 'Unknown')}"
+            f" ({proposal.get('year', 'Unknown')})"
+            f" [{proposal.get('release_type', 'Album')}]"
         )
+        panel = Panel(summary, title="🤖 AI Proposal", border_style="yellow")
         self.console.print(panel)
 
         if proposal.get("confidence"):
             self.console.print(f"Confidence: {proposal['confidence']}", style="dim")
 
         if proposal.get("reasoning"):
-            self.console.print("\n[dim]Reasoning:[/dim]")
-            self.console.print(proposal["reasoning"], style="dim italic")
+            reasoning_text = proposal["reasoning"]
+            if len(reasoning_text) > 200:
+                reasoning_text = reasoning_text[:200] + "…"
+            self.console.print(f"[dim]Reasoning:[/dim] {reasoning_text}", style="dim italic")
 
     def get_user_feedback(self, proposal: Dict) -> Dict:
         """Get user feedback on the proposal with rich interaction."""
-        self.console.print("\n[bold cyan]Options:[/bold cyan]")
-        self.console.print("  [1] ✅ Accept this proposal")
-        self.console.print("  [2] ✏️  Edit the proposal")
-        self.console.print("  [3] 🔄 Ask AI to reconsider")
-        self.console.print("  [4] ⏭️  Skip this folder")
-        self.console.print("  [5] ❌ Cancel organization")
+        self.console.print(
+            "[bold cyan]Options:[/bold cyan] "
+            "[1] Accept | [2] Edit | [3] Reconsider | [4] Skip | [5] Cancel"
+        )
 
         choice = Prompt.ask(
             "\n[bold]Your choice[/bold]", choices=["1", "2", "3", "4", "5"], default="1"
@@ -264,7 +260,6 @@ class InteractiveUI:
         table.add_row("Skipped", str(summary.get("skipped", 0)))
         table.add_row("Errors", str(summary.get("errors", 0)))
 
-        self.console.print("\n")
         self.console.print(table)
 
         if summary.get("organized_albums"):
