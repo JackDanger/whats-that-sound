@@ -4,102 +4,83 @@ import click
 from pathlib import Path
 from rich.console import Console
 
-from .models import ModelManager
 from .organizer import MusicOrganizer
+from .inference import InferenceProvider
 
 console = Console()
 
 
-@click.group()
-def cli():
-    """Organize music collections using local LLMs."""
-    pass
-
-
-@cli.command()
-@click.argument(
-    "source_dir",
-    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
-)
-@click.argument(
-    "target_dir", type=click.Path(file_okay=False, dir_okay=True, path_type=Path)
-)
-@click.option("--model", "-m", required=True, help="Name of the LLM model to use")
+@click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
-    "--batch-size", "-b", default=1, help="Number of folders to process at once"
+    "--source-dir",
+    required=True,
+    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
+    help="Path to the source directory containing unorganized music",
 )
-def organize(source_dir: Path, target_dir: Path, model: str, batch_size: int):
-    """Organize music from SOURCE_DIR into TARGET_DIR using the specified model."""
+@click.option(
+    "--target-dir",
+    required=True,
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    help="Path to the target directory where organized music will be written",
+)
+@click.option("--model", "-m", help="Model name, e.g. 'gpt-5' or 'gemini-2.5-pro'")
+@click.option("--inference-url", help="HTTP base URL for a llama-server, e.g. http://localhost:11434/v1")
+def main_cli(source_dir: Path, target_dir: Path, model: str | None, inference_url: str | None):
+    """Organize music from SOURCE_DIR into TARGET_DIR using an inference provider.
+
+    Exactly one of --model or --inference-url must be provided.
+    """
     try:
+        # Validate args
+        if bool(model) == bool(inference_url):
+            raise click.ClickException("Provide exactly one of --model or --inference-url")
+
         # Create target directory if it doesn't exist
         target_dir.mkdir(parents=True, exist_ok=True)
 
-        # Initialize model manager
-        model_manager = ModelManager()
-
-        # Ensure model is downloaded
-        console.print(f"[cyan]Checking for model: {model}[/cyan]")
-        model_path = model_manager.ensure_model(model)
+        # Configure inference
+        if inference_url:
+            # Use llama HTTP server
+            provider = InferenceProvider(provider="llama", model="", llama_base_url=inference_url)
+        else:
+            # Map model to provider heuristically
+            normalized = model.lower()
+            if normalized.startswith("gpt") or normalized.startswith("o"):
+                # OpenAI family
+                import os as _os
+                token = _os.getenv("OPENAI_API_TOKEN") or _os.getenv("OPENAI_API_KEY")
+                if not token:
+                    raise click.ClickException("OPENAI_API_TOKEN is required for OpenAI models")
+                provider = InferenceProvider(provider="openai", model=model, openai_api_key=token)
+            elif normalized.startswith("gemini"):
+                import os as _os
+                token = _os.getenv("GEMINI_API_TOKEN") or _os.getenv("GOOGLE_API_KEY")
+                if not token:
+                    raise click.ClickException("GEMINI_API_TOKEN is required for Gemini models")
+                provider = InferenceProvider(provider="gemini", model=model, gemini_api_key=token)
+            else:
+                # Default to llama for unknowns
+                provider = InferenceProvider(provider="llama", model=normalized)
 
         # Initialize organizer
-        organizer = MusicOrganizer(model_path, source_dir, target_dir)
+        organizer = MusicOrganizer(Path(model or "model"), source_dir, target_dir)
+        # Inject our provider on the organizer (already used inside components)
+        organizer.inference = provider
+        organizer.structure_classifier.inference = provider
+        organizer.proposal_generator.inference = provider
 
         # Run organization process
         organizer.organize()
 
+    except click.ClickException:
+        raise
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         raise click.ClickException(str(e))
 
-
-@cli.command()
-@click.option("--download", "-d", help="Download a specific model")
-@click.option("--search", "-s", help="Search for models on Hugging Face")
-def models(download: str, search: str):
-    """List downloaded models or download a new one."""
-    model_manager = ModelManager()
-
-    if download:
-        console.print(f"[cyan]Downloading model: {download}[/cyan]")
-        try:
-            model_path = model_manager.download_model(download)
-            console.print(f"[green]✓ Model downloaded to: {model_path}[/green]")
-        except Exception as e:
-            console.print(f"[red]Error downloading model: {e}[/red]")
-            raise click.ClickException(str(e))
-    elif search:
-        console.print(f"[cyan]Searching for models matching: {search}[/cyan]")
-        try:
-            results = model_manager.search_models(search)
-            if results:
-                console.print(f"[green]Found {len(results)} models:[/green]")
-                for model in results:
-                    console.print(f"  • [bold]{model['id']}[/bold]")
-                    if model.get("description"):
-                        console.print(f"    {model['description']}")
-                    console.print(f"    Downloads: {model.get('downloads', 0):,}")
-                    console.print()
-            else:
-                console.print(f"[yellow]No models found matching '{search}'[/yellow]")
-        except Exception as e:
-            console.print(f"[red]Error searching models: {e}[/red]")
-            raise click.ClickException(str(e))
-    else:
-        # List models
-        models = model_manager.list_models()
-        if models:
-            console.print("[cyan]Downloaded models:[/cyan]")
-            for model in models:
-                console.print(f"  • {model}")
-        else:
-            console.print("[yellow]No models downloaded yet.[/yellow]")
-            console.print("Use --download to download a model from Hugging Face.")
-
-
 def main():
     """Main entry point."""
-    cli()
-
+    main_cli()
 
 if __name__ == "__main__":
     main()
