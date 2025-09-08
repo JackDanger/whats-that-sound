@@ -11,6 +11,10 @@ from .processors import AlbumProcessor, CollectionProcessor
 from .processors.background_processor import BackgroundProposalProcessor
 from .trackers import ProgressTracker, StateManager
 from .ui import InteractiveUI
+from .jobs import SQLiteJobStore
+import multiprocessing
+import os
+from .worker import run_worker
 
 console = Console()
 
@@ -46,11 +50,18 @@ class MusicOrganizer:
         self.progress_tracker = ProgressTracker()
         self.state_manager = StateManager()
         self.ui = InteractiveUI()
+        self.jobstore = SQLiteJobStore()
 
-        # Background processor for LLM inference
+        # Background processor for LLM inference (in-process fallback)
         self.background_processor = BackgroundProposalProcessor(
             self.proposal_generator, max_prefetch=2
         )
+
+        # Optional external worker process using SQLite job store
+        self.worker_process = None
+        if (os.getenv("WTS_ENABLE_WORKER") or "").lower() in ("1", "true", "yes"):
+            self.worker_process = multiprocessing.Process(target=run_worker, daemon=True)
+            self.worker_process.start()
 
         # Processors
         self.album_processor = AlbumProcessor(
@@ -172,8 +183,13 @@ class MusicOrganizer:
                 if structure_type in ("single_album", "multi_disc_album"):
                     metadata = self.directory_analyzer.extract_folder_metadata(folder)
                     if metadata.get("total_files", 0) > 0:
-                        job = ProposalJob(folder=folder, metadata=metadata)
-                        success = getattr(self.background_processor, "submit_job", lambda _: False)(job)
+                        # Enqueue to external worker if enabled, else in-process background
+                        if self.worker_process is not None:
+                            self.jobstore.enqueue(folder, metadata)
+                            success = True
+                        else:
+                            job = ProposalJob(folder=folder, metadata=metadata)
+                            success = getattr(self.background_processor, "submit_job", lambda _: False)(job)
                         if success:
                             count += 1
                             console.print(
@@ -192,12 +208,16 @@ class MusicOrganizer:
                         album_folder = folder / subdir["name"]
                         metadata = self.directory_analyzer.extract_folder_metadata(album_folder)
                         if metadata.get("total_files", 0) > 0:
-                            job = ProposalJob(
-                                folder=album_folder,
-                                metadata=metadata,
-                                artist_hint=folder.name,
-                            )
-                            success = getattr(self.background_processor, "submit_job", lambda _: False)(job)
+                            if self.worker_process is not None:
+                                self.jobstore.enqueue(album_folder, metadata, artist_hint=folder.name)
+                                success = True
+                            else:
+                                job = ProposalJob(
+                                    folder=album_folder,
+                                    metadata=metadata,
+                                    artist_hint=folder.name,
+                                )
+                                success = getattr(self.background_processor, "submit_job", lambda _: False)(job)
                             if success:
                                 count += 1
                                 console.print(

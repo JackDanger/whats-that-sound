@@ -9,6 +9,7 @@ from ..generators import ProposalGenerator
 from ..organizers import FileOrganizer
 from ..trackers import StateManager
 from ..ui import InteractiveUI
+from ..jobs import SQLiteJobStore
 
 console = Console()
 
@@ -41,6 +42,7 @@ class CollectionProcessor:
         self.state_manager = state_manager
         self.ui = ui
         self.background_processor = background_processor
+        self.jobstore = SQLiteJobStore()
 
     def process_artist_collection(self, folder: Path, structure_analysis: Dict) -> bool:
         """Process an artist collection directory with multiple albums.
@@ -105,7 +107,7 @@ class CollectionProcessor:
         self.ui.display_folder_info(metadata)
         self.ui.display_file_samples(metadata.get("files", []))
 
-        # Get LLM proposal with artist hint (try background first, fallback to synchronous)
+        # Get LLM proposal with artist hint (prefer external worker, then background)
         proposal = self._get_proposal(album_folder, metadata, artist_hint=artist_hint)
 
         # Interactive loop for user feedback
@@ -150,6 +152,13 @@ class CollectionProcessor:
         Returns:
             Proposal dictionary
         """
+        # External worker result first
+        if not user_feedback:
+            ext = self.jobstore.get_result(folder)
+            if ext:
+                console.print("[green]Using external worker proposal![/green]")
+                return ext
+
         if self.background_processor and not user_feedback:
             # Try to get from background processor first
             job_id = str(folder)
