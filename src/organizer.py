@@ -147,7 +147,12 @@ class MusicOrganizer:
     def _prefetch_proposals(self, folders, max_jobs: int = None):
         """Submit background jobs upfront to warm the pipeline.
 
-        If max_jobs is None, submit for all folders until the background queue refuses.
+        Strategy:
+        - Quickly analyze structure heuristically.
+        - If folder looks like single or multi-disc album, queue that folder.
+        - If it looks like an artist collection, queue each album subdirectory with artist_hint.
+
+        If max_jobs is None, submit for all applicable items until queue refuses.
 
         Args:
             folders: List of folders to process
@@ -160,18 +165,46 @@ class MusicOrganizer:
             if max_jobs is not None and count >= max_jobs:
                 break
             try:
-                # Quick metadata extraction for background job
-                metadata = self.directory_analyzer.extract_folder_metadata(folder)
-                if metadata.get("total_files", 0) > 0:
-                    job = ProposalJob(folder=folder, metadata=metadata)
-                    success = getattr(self.background_processor, "submit_job", lambda _: False)(job)
-                    if success:
-                        count += 1
-                        console.print(
-                            f"[dim]Queued background proposal for {folder.name}[/dim]"
-                        )
-                    else:
-                        break  # Queue full, stop submitting
+                # Analyze directory structure quickly
+                structure = self.directory_analyzer.analyze_directory_structure(folder)
+                structure_type = self.structure_classifier._heuristic_classification(structure)
+
+                if structure_type in ("single_album", "multi_disc_album"):
+                    metadata = self.directory_analyzer.extract_folder_metadata(folder)
+                    if metadata.get("total_files", 0) > 0:
+                        job = ProposalJob(folder=folder, metadata=metadata)
+                        success = getattr(self.background_processor, "submit_job", lambda _: False)(job)
+                        if success:
+                            count += 1
+                            console.print(
+                                f"[dim]Queued background proposal for {folder.name}[/dim]"
+                            )
+                        else:
+                            break
+
+                elif structure_type == "artist_collection":
+                    # Prefetch at album level with artist hint
+                    for subdir in structure.get("subdirectories", []):
+                        if max_jobs is not None and count >= max_jobs:
+                            break
+                        if subdir.get("music_files", 0) <= 0:
+                            continue
+                        album_folder = folder / subdir["name"]
+                        metadata = self.directory_analyzer.extract_folder_metadata(album_folder)
+                        if metadata.get("total_files", 0) > 0:
+                            job = ProposalJob(
+                                folder=album_folder,
+                                metadata=metadata,
+                                artist_hint=folder.name,
+                            )
+                            success = getattr(self.background_processor, "submit_job", lambda _: False)(job)
+                            if success:
+                                count += 1
+                                console.print(
+                                    f"[dim]Queued background proposal for {album_folder.name}[/dim]"
+                                )
+                            else:
+                                break
             except Exception as e:
                 console.print(
                     f"[yellow]Could not queue background job for {folder.name}: {e}[/yellow]"

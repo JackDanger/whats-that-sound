@@ -118,7 +118,8 @@ class TestProposalGeneratorIntegration:
         call_args, _ = mock_inference.generate.call_args
         prompt = call_args[0]
         assert "Led Zeppelin" in prompt
-        assert "artist collection" in prompt
+        # Prompt wording changed; ensure the artist hint is present
+        assert "Artist Hint" in prompt
 
     def test_proposal_with_user_feedback(self, generator, mock_inference):
         """Test proposal generation with user feedback."""
@@ -160,7 +161,7 @@ class TestProposalGeneratorIntegration:
         call_args, _ = mock_inference.generate.call_args
         prompt = call_args[0]
         assert user_feedback in prompt
-        assert "reconsider" in prompt
+        assert "User Feedback:" in prompt
 
     def test_invalid_json_response_parsing(self, generator, mock_inference):
         """Test handling of invalid JSON response from LLM."""
@@ -317,7 +318,8 @@ class TestProposalGeneratorIntegration:
         # Check folder information
         assert "Complex Album Name" in prompt
         assert "15" in prompt  # total files
-        assert "Various Artists" in prompt
+        # Artist may be replaced by provided artist_hint in the prompt
+        assert ("Various Artists" in prompt) or ("Test hint" in prompt)
         assert "2023" in prompt
 
         # Check file samples
@@ -325,13 +327,11 @@ class TestProposalGeneratorIntegration:
         assert "Artist1" in prompt
         assert "Title1" in prompt
 
-        # Check user feedback
+        # Check user feedback included
         assert "Test feedback" in prompt
-        assert "reconsider" in prompt
 
-        # Check artist hint
+        # Check artist hint present (prompt wording simplified)
         assert "Test hint" in prompt
-        assert "artist collection" in prompt
 
         # Check compilation flag
         assert "Yes" in prompt  # Is Compilation: Yes
@@ -339,8 +339,8 @@ class TestProposalGeneratorIntegration:
         # Check track pattern
         assert "inconsistent" in prompt
 
-        # Check JSON format requirement
-        assert "JSON response" in prompt
+        # Check JSON format requirement (updated wording)
+        assert "ONLY JSON" in prompt
         assert "artist" in prompt
         assert "album" in prompt
         assert "year" in prompt

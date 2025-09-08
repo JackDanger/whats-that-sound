@@ -5,6 +5,7 @@ import re
 from typing import Dict, Optional
 from src.inference import InferenceProvider
 from rich.console import Console
+import re as _re
 
 console = Console()
 
@@ -79,51 +80,57 @@ class ProposalGenerator:
         """
         analysis = metadata.get("analysis", {})
 
-        prompt = """You are a music organization expert. Analyze the following music folder and suggest how to organize it.
+        # Heuristic parsing from folder name like "YYYY - Album Title"
+        def _parse_from_folder(name: str):
+            m = _re.match(r"^(?P<year>\d{4})\s*-\s*(?P<album>.+)$", name)
+            if m:
+                return m.group("album").strip(), m.group("year").strip()
+            return name.strip(), None
 
-IMPORTANT: Use the detected metadata below as your PRIMARY source of information.
+        folder_name = metadata.get("folder_name", "Unknown")
+        album_from_folder, year_from_folder = _parse_from_folder(folder_name)
 
-Folder Information:
+        # Compose best-guess values, prioritizing explicit analysis, then folder hints
+        detected_artist = artist_hint or analysis.get("common_artist") or folder_name
+        detected_album = analysis.get("common_album") or album_from_folder
+        detected_year = analysis.get("common_year") or year_from_folder or "Unknown"
+
+        prompt = """You are a music organization expert. Produce exactly one JSON object with your best guess.
+
+Detected Values:
 - Folder Name: {folder_name}
 - Total Files: {total_files}
-- **DETECTED ARTIST: {detected_artist}** ← USE THIS
-- **DETECTED ALBUM: {detected_album}** ← USE THIS  
-- **DETECTED YEAR: {detected_year}** ← USE THIS
-- Is Compilation: {is_compilation}
-- Track Pattern: {track_pattern}
+- Artist (detected): {detected_artist}
+- Album (detected or folder-based): {detected_album}
+- Year (detected or folder-based): {detected_year}
+- Compilation: {is_compilation}
+- Track Numbering: {track_pattern}
 {artist_hint_section}
 
-Sample Files (showing consistent artist/title pattern):
+Heuristic Hints:
+- Album from folder name: {album_from_folder}
+- Year from folder name: {year_from_folder}
+
+Sample Files:
 {file_samples}
 
+User Feedback:
 {user_feedback_section}
 
-INSTRUCTIONS: 
-- PRIORITIZE the detected artist, album, and year shown above
-- The sample files confirm the artist pattern
-- Only deviate from detected metadata if there's a clear error
+Constraints:
+- Use Artist/Album/Year above unless clearly wrong.
+- Choose release_type from: Album, EP, Single, Compilation, Live, Remix, Bootleg.
+- Respond with ONLY JSON (no markdown fences, no commentary).
 
-Based on this information, provide a JSON response with your best guess for:
-1. artist - Use the DETECTED ARTIST unless clearly wrong
-2. album - Use the DETECTED ALBUM unless clearly wrong  
-3. year - Use the DETECTED YEAR unless clearly wrong
-4. release_type - One of: Album, EP, Single, Compilation, Live, Remix, Bootleg
-5. confidence - Your confidence level (low, medium, high)
-6. reasoning - Brief explanation of your decision
-
-Response format:
-```json
+JSON schema:
 {{
-    "artist": "Artist Name",
-    "album": "Album Title",
-    "year": "2023",
-    "release_type": "Album",
-    "confidence": "high",
-    "reasoning": "Based on metadata and folder structure..."
-}}
-```
-
-Provide ONLY the JSON response."""
+  "artist": "...",
+  "album": "...",
+  "year": "...",
+  "release_type": "Album|EP|Single|Compilation|Live|Remix|Bootleg",
+  "confidence": "low|medium|high",
+  "reasoning": "..."
+}}"""
 
         # Format file samples
         file_samples = []
@@ -135,26 +142,26 @@ Provide ONLY the JSON response."""
                 )
 
         # Add user feedback if provided
-        user_feedback_section = ""
-        if user_feedback:
-            user_feedback_section = f"\nUser Feedback: {user_feedback}\nPlease reconsider your proposal based on this feedback.\n"
+        user_feedback_section = user_feedback or "(none)"
 
         # Add artist hint if provided
         artist_hint_section = ""
         if artist_hint:
-            artist_hint_section = f"\n- **ARTIST HINT: {artist_hint}** ← This folder is part of an artist collection, USE THIS ARTIST NAME"
+            artist_hint_section = f"- Artist Hint (collection): {artist_hint}"
 
         return prompt.format(
-            folder_name=metadata.get("folder_name", "Unknown"),
+            folder_name=folder_name,
             total_files=metadata.get("total_files", 0),
-            detected_artist=analysis.get("common_artist", "Unknown"),
-            detected_album=analysis.get("common_album", "Unknown"),
-            detected_year=analysis.get("common_year", "Unknown"),
+            detected_artist=detected_artist,
+            detected_album=detected_album,
+            detected_year=detected_year,
             is_compilation="Yes" if analysis.get("likely_compilation") else "No",
             track_pattern=analysis.get("track_number_pattern", "unknown"),
-            file_samples="\n".join(file_samples),
+            album_from_folder=album_from_folder,
+            year_from_folder=year_from_folder or "Unknown",
+            file_samples="\n".join(file_samples) or "(none)",
             user_feedback_section=user_feedback_section,
-            artist_hint_section=artist_hint_section,
+            artist_hint_section=("\n" + artist_hint_section) if artist_hint_section else "",
         )
 
     def _parse_llm_response(self, text: str) -> Dict:
@@ -197,16 +204,20 @@ Provide ONLY the JSON response."""
             Dictionary containing fallback proposal
         """
         analysis = metadata.get("analysis", {})
+        folder_name = metadata.get("folder_name", "Unknown")
+        m = _re.match(r"^(?P<year>\d{4})\s*-\s*(?P<album>.+)$", folder_name)
+        album_from_folder = m.group("album").strip() if m else folder_name
+        year_from_folder = m.group("year").strip() if m else None
 
         return {
             "artist": artist_hint
             or analysis.get(
-                "common_artist", metadata.get("folder_name", "Unknown Artist")
+                "common_artist", folder_name
             ),
             "album": analysis.get(
-                "common_album", metadata.get("folder_name", "Unknown Album")
+                "common_album", album_from_folder
             ),
-            "year": analysis.get("common_year", "2023"),
+            "year": analysis.get("common_year", year_from_folder or "Unknown"),
             "release_type": (
                 "Compilation" if analysis.get("likely_compilation") else "Album"
             ),
