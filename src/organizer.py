@@ -81,6 +81,13 @@ class MusicOrganizer:
             if not folders:
                 return
 
+            # Aggressively prefetch proposals for all discovered folders up-front.
+            try:
+                self._prefetch_proposals(folders)
+            except Exception:
+                # Non-fatal if prefetch fails
+                pass
+
             pipeline = ProcessingPipeline(self, folders)
             pipeline.execute()
 
@@ -137,23 +144,29 @@ class MusicOrganizer:
             console.print(f"[red]Unknown structure type: {structure_type}[/red]")
             return False
 
-    def _prefetch_proposals(self, folders, max_jobs: int = 3):
-        """Submit background jobs for the first few folders.
+    def _prefetch_proposals(self, folders, max_jobs: int = None):
+        """Submit background jobs upfront to warm the pipeline.
+
+        If max_jobs is None, submit for all folders until the background queue refuses.
 
         Args:
             folders: List of folders to process
-            max_jobs: Maximum number of jobs to submit
+            max_jobs: Optional explicit limit on jobs to submit
         """
         from .processors.background_processor import ProposalJob
 
-        for i, folder in enumerate(folders[:max_jobs]):
+        count = 0
+        for i, folder in enumerate(folders):
+            if max_jobs is not None and count >= max_jobs:
+                break
             try:
                 # Quick metadata extraction for background job
                 metadata = self.directory_analyzer.extract_folder_metadata(folder)
                 if metadata.get("total_files", 0) > 0:
                     job = ProposalJob(folder=folder, metadata=metadata)
-                    success = self.background_processor.submit_job(job)
+                    success = getattr(self.background_processor, "submit_job", lambda _: False)(job)
                     if success:
+                        count += 1
                         console.print(
                             f"[dim]Queued background proposal for {folder.name}[/dim]"
                         )

@@ -67,7 +67,7 @@ class BackgroundProposalProcessor:
             return
 
         self.shutdown_event.clear()
-        self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True, name="proposal-worker")
         self.worker_thread.start()
         console.print("[dim]Background proposal processor started[/dim]")
 
