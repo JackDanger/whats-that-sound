@@ -147,8 +147,10 @@ class TestStructureClassifierIntegration:
 
     @pytest.fixture
     def mock_llm(self):
-        """Create a mock LLM that gives realistic responses."""
-        return Mock()
+        """Create a mock inference provider that gives realistic responses."""
+        m = Mock()
+        m.generate.return_value = "single_album"
+        return m
 
     @pytest.fixture
     def classifier(self, mock_llm):
@@ -158,7 +160,7 @@ class TestStructureClassifierIntegration:
     def test_classify_single_album_with_realistic_response(self, classifier, mock_llm):
         """Test classification of single album with realistic LLM response."""
         # Mock LLM to give realistic single album response
-        mock_llm.return_value = {"choices": [{"text": "single_album"}]}
+        mock_llm.generate.return_value = "single_album"
 
         # Real single album structure
         structure = {
@@ -173,12 +175,12 @@ class TestStructureClassifierIntegration:
         result = classifier.classify_directory_structure(structure)
 
         assert result == "single_album"
-        mock_llm.assert_called_once()
+        mock_llm.generate.assert_called_once()
 
     def test_classify_multi_disc_with_realistic_response(self, classifier, mock_llm):
         """Test classification of multi-disc album with realistic LLM response."""
         # Mock LLM to give realistic multi-disc response
-        mock_llm.return_value = {"choices": [{"text": "multi_disc_album"}]}
+        mock_llm.generate.return_value = "multi_disc_album"
 
         # Real multi-disc structure
         structure = {
@@ -196,14 +198,14 @@ class TestStructureClassifierIntegration:
         result = classifier.classify_directory_structure(structure)
 
         assert result == "multi_disc_album"
-        mock_llm.assert_called_once()
+        mock_llm.generate.assert_called_once()
 
     def test_classify_artist_collection_with_realistic_response(
         self, classifier, mock_llm
     ):
         """Test classification of artist collection with realistic LLM response."""
         # Mock LLM to give realistic artist collection response
-        mock_llm.return_value = {"choices": [{"text": "artist_collection"}]}
+        mock_llm.generate.return_value = "artist_collection"
 
         # Real artist collection structure
         structure = {
@@ -239,7 +241,7 @@ class TestStructureClassifierIntegration:
         result = classifier.classify_directory_structure(structure)
 
         assert result == "artist_collection"
-        mock_llm.assert_called_once()
+        mock_llm.generate.assert_called_once()
 
     def test_heuristic_fallback_when_llm_fails(self, classifier, mock_llm):
         """Test that heuristic classification works when LLM fails."""
@@ -566,25 +568,17 @@ class TestEndToEndIntegration:
         target_dir = tmp_path / "target"
         target_dir.mkdir()
 
-        # Create organizer with minimal mocking (only LLM)
-        with patch("src.organizer.Llama") as mock_llm_class:
-            mock_llm = Mock()
-            mock_llm_class.return_value = mock_llm
+        # Create organizer with minimal mocking (only inference provider)
+        with patch("src.organizer.InferenceProvider") as mock_inf_class:
+            mock_inf = Mock()
+            mock_inf_class.return_value = mock_inf
 
             organizer = MusicOrganizer(tmp_path / "model.gguf", source_dir, target_dir)
 
             # Mock only the LLM responses and UI interactions
-            organizer.structure_classifier.llm.return_value = {
-                "choices": [{"text": "single_album"}]
-            }
-
-            organizer.proposal_generator.llm.return_value = {
-                "choices": [
-                    {
-                        "text": '{"artist": "Test Artist", "album": "Test Album", "year": "2023", "release_type": "Album", "confidence": "high"}'
-                    }
-                ]
-            }
+            # Structure classifier and proposal generator call inference.generate(prompt)
+            organizer.structure_classifier.inference.generate.return_value = "single_album"
+            organizer.proposal_generator.inference.generate.return_value = '{"artist": "Test Artist", "album": "Test Album", "year": "2023", "release_type": "Album", "confidence": "high"}'
 
             # Mock UI to accept the proposal
             organizer.ui.get_user_feedback = Mock(
@@ -656,24 +650,15 @@ class TestEndToEndIntegration:
         target_dir.mkdir()
 
         # Create organizer with minimal mocking
-        with patch("src.organizer.Llama") as mock_llm_class:
-            mock_llm = Mock()
-            mock_llm_class.return_value = mock_llm
+        with patch("src.organizer.InferenceProvider") as mock_inf_class:
+            mock_inf = Mock()
+            mock_inf_class.return_value = mock_inf
 
             organizer = MusicOrganizer(tmp_path / "model.gguf", source_dir, target_dir)
 
             # Mock LLM responses
-            organizer.structure_classifier.llm.return_value = {
-                "choices": [{"text": "multi_disc_album"}]
-            }
-
-            organizer.proposal_generator.llm.return_value = {
-                "choices": [
-                    {
-                        "text": '{"artist": "Multi Artist", "album": "Multi Album", "year": "2024", "release_type": "Album", "confidence": "high"}'
-                    }
-                ]
-            }
+            organizer.structure_classifier.inference.generate.return_value = "multi_disc_album"
+            organizer.proposal_generator.inference.generate.return_value = '{"artist": "Multi Artist", "album": "Multi Album", "year": "2024", "release_type": "Album", "confidence": "high"}'
 
             # Mock UI to accept the proposal
             organizer.ui.get_user_feedback = Mock(

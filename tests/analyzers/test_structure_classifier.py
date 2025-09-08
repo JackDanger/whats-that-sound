@@ -10,19 +10,21 @@ class TestStructureClassifier:
     """Test cases for StructureClassifier class."""
 
     @pytest.fixture
-    def mock_llm(self):
-        """Create a mock LLM for testing."""
-        return Mock()
+    def mock_inference(self):
+        """Create a mock inference provider for testing."""
+        m = Mock()
+        m.generate.return_value = "single_album"
+        return m
 
     @pytest.fixture
-    def classifier(self, mock_llm):
+    def classifier(self, mock_inference):
         """Create a StructureClassifier instance for testing."""
-        return StructureClassifier(mock_llm)
+        return StructureClassifier(mock_inference)
 
-    def test_classify_directory_structure_with_llm_success(self, classifier, mock_llm):
+    def test_classify_directory_structure_with_llm_success(self, classifier, mock_inference):
         """Test successful LLM-based directory structure classification."""
         # Mock LLM to return specific classification
-        mock_llm.return_value = {"choices": [{"text": "multi_disc_album"}]}
+        mock_inference.generate.return_value = "multi_disc_album"
 
         structure = {
             "folder_name": "Test Album",
@@ -39,14 +41,14 @@ class TestStructureClassifier:
         classification = classifier.classify_directory_structure(structure)
 
         assert classification == "multi_disc_album"
-        mock_llm.assert_called_once()
+        mock_inference.generate.assert_called_once()
 
     def test_classify_directory_structure_with_llm_invalid_response(
-        self, classifier, mock_llm
+        self, classifier, mock_inference
     ):
         """Test classification with invalid LLM response falls back to heuristics."""
         # Mock LLM to return invalid classification
-        mock_llm.return_value = {"choices": [{"text": "invalid_classification"}]}
+        mock_inference.generate.return_value = "invalid_classification"
 
         structure = {
             "folder_name": "Test Album",
@@ -62,10 +64,10 @@ class TestStructureClassifier:
         # Should fall back to heuristic classification
         assert classification == "single_album"
 
-    def test_classify_directory_structure_with_llm_error(self, classifier, mock_llm):
+    def test_classify_directory_structure_with_llm_error(self, classifier, mock_inference):
         """Test classification with LLM error falls back to heuristics."""
         # Mock LLM to raise an error
-        mock_llm.side_effect = Exception("LLM error")
+        mock_inference.generate.side_effect = Exception("LLM error")
 
         structure = {
             "folder_name": "Test Album",

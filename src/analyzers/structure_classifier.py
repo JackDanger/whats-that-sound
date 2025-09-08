@@ -1,7 +1,7 @@
 """Structure classification for music directories."""
 
 from typing import Dict
-from llama_cpp import Llama
+from src.inference import InferenceProvider
 from rich.console import Console
 
 console = Console()
@@ -10,13 +10,9 @@ console = Console()
 class StructureClassifier:
     """Classifies directory structures using LLM and heuristics."""
 
-    def __init__(self, llm: Llama):
-        """Initialize the structure classifier.
-
-        Args:
-            llm: Initialized Llama model for classification
-        """
-        self.llm = llm
+    def __init__(self, inference: InferenceProvider):
+        """Initialize the structure classifier with a unified inference interface."""
+        self.inference = inference
 
     def classify_directory_structure(self, structure_analysis: Dict) -> str:
         """Classify the directory structure type using LLM with heuristic fallback.
@@ -32,15 +28,7 @@ class StructureClassifier:
         prompt = self._build_classification_prompt(structure_analysis)
 
         try:
-            response = self.llm(
-                prompt,
-                max_tokens=50,
-                temperature=0.3,
-                stop=["\n", " ", ".", ","],
-                echo=False,
-            )
-
-            classification = response["choices"][0]["text"].strip().lower()
+            classification = self.inference.generate(prompt).strip().lower()
 
             # Validate classification
             valid_types = ["single_album", "multi_disc_album", "artist_collection"]

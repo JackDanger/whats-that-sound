@@ -3,7 +3,7 @@
 import json
 import re
 from typing import Dict, Optional
-from llama_cpp import Llama
+from src.inference import InferenceProvider
 from rich.console import Console
 
 console = Console()
@@ -12,13 +12,9 @@ console = Console()
 class ProposalGenerator:
     """Generates organization proposals using LLM."""
 
-    def __init__(self, llm: Llama):
-        """Initialize the proposal generator.
-
-        Args:
-            llm: Initialized Llama model for proposal generation
-        """
-        self.llm = llm
+    def __init__(self, inference: InferenceProvider):
+        """Initialize the proposal generator with a unified inference interface."""
+        self.inference = inference
 
     def get_llm_proposal(
         self,
@@ -44,16 +40,8 @@ class ProposalGenerator:
 
         # Get LLM response
         try:
-            response = self.llm(
-                prompt,
-                max_tokens=512,
-                temperature=0.7,
-                stop=["```", "\n\n\n"],
-                echo=False,
-            )
-
             # Parse response
-            text = response["choices"][0]["text"].strip()
+            text = self.inference.generate(prompt).strip()
             print(text)
 
             # Try to extract JSON

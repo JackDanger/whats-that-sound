@@ -19,8 +19,10 @@ class TestAlbumProcessorIntegration:
 
     @pytest.fixture
     def mock_llm(self):
-        """Create a mock LLM for testing."""
-        return Mock()
+        """Create a mock inference provider for testing."""
+        m = Mock()
+        m.generate.return_value = "{}"
+        return m
 
     @pytest.fixture
     def processor(self, mock_llm, tmp_path):
@@ -62,13 +64,7 @@ class TestAlbumProcessorIntegration:
         }
 
         # Mock LLM response
-        mock_llm.return_value = {
-            "choices": [
-                {
-                    "text": '{"artist": "Test Artist", "album": "Test Album", "year": "2023", "release_type": "Album", "confidence": "high", "reasoning": "Clear album structure"}'
-                }
-            ]
-        }
+        mock_llm.generate.return_value = '{"artist": "Test Artist", "album": "Test Album", "year": "2023", "release_type": "Album", "confidence": "high", "reasoning": "Clear album structure"}'
 
         # Mock UI to accept proposal
         processor.ui.display_folder_info = Mock()
@@ -130,21 +126,9 @@ class TestAlbumProcessorIntegration:
         }
 
         # Mock LLM responses (initial and reconsidered)
-        mock_llm.side_effect = [
-            {
-                "choices": [
-                    {
-                        "text": '{"artist": "Wrong Artist", "album": "Wrong Album", "year": "2000", "release_type": "Album", "confidence": "low", "reasoning": "Uncertain"}'
-                    }
-                ]
-            },
-            {
-                "choices": [
-                    {
-                        "text": '{"artist": "Correct Artist", "album": "Correct Album", "year": "2023", "release_type": "Album", "confidence": "high", "reasoning": "Corrected with feedback"}'
-                    }
-                ]
-            },
+        mock_llm.generate.side_effect = [
+            '{"artist": "Wrong Artist", "album": "Wrong Album", "year": "2000", "release_type": "Album", "confidence": "low", "reasoning": "Uncertain"}',
+            '{"artist": "Correct Artist", "album": "Correct Album", "year": "2023", "release_type": "Album", "confidence": "high", "reasoning": "Corrected with feedback"}',
         ]
 
         # Mock UI interaction sequence
@@ -179,7 +163,7 @@ class TestAlbumProcessorIntegration:
         assert result is True
 
         # Verify LLM was called twice (initial + reconsideration)
-        assert mock_llm.call_count == 2
+        assert mock_llm.generate.call_count == 2
 
         # Verify files were organized with corrected information
         target_dir = (
@@ -216,13 +200,7 @@ class TestAlbumProcessorIntegration:
         }
 
         # Mock LLM response
-        mock_llm.return_value = {
-            "choices": [
-                {
-                    "text": '{"artist": "Some Artist", "album": "Some Album", "year": "2023", "release_type": "Album", "confidence": "medium", "reasoning": "Guess"}'
-                }
-            ]
-        }
+        mock_llm.generate.return_value = '{"artist": "Some Artist", "album": "Some Album", "year": "2023", "release_type": "Album", "confidence": "medium", "reasoning": "Guess"}'
 
         # Mock UI to skip
         processor.ui.display_folder_info = Mock()
@@ -274,13 +252,7 @@ class TestAlbumProcessorIntegration:
         }
 
         # Mock LLM response
-        mock_llm.return_value = {
-            "choices": [
-                {
-                    "text": '{"artist": "Multi Artist", "album": "Multi Album", "year": "2024", "release_type": "Album", "confidence": "high", "reasoning": "Multi-disc structure"}'
-                }
-            ]
-        }
+        mock_llm.generate.return_value = '{"artist": "Multi Artist", "album": "Multi Album", "year": "2024", "release_type": "Album", "confidence": "high", "reasoning": "Multi-disc structure"}'
 
         # Mock UI to accept proposal
         processor.ui.display_folder_info = Mock()
@@ -328,8 +300,10 @@ class TestCollectionProcessorIntegration:
 
     @pytest.fixture
     def mock_llm(self):
-        """Create a mock LLM for testing."""
-        return Mock()
+        """Create a mock inference provider for testing."""
+        m = Mock()
+        m.generate.return_value = "{}"
+        return m
 
     @pytest.fixture
     def processor(self, mock_llm, tmp_path):
@@ -390,21 +364,9 @@ class TestCollectionProcessorIntegration:
         }
 
         # Mock LLM responses for each album
-        mock_llm.side_effect = [
-            {
-                "choices": [
-                    {
-                        "text": '{"artist": "Test Artist", "album": "First Album", "year": "2022", "release_type": "Album", "confidence": "high", "reasoning": "First album"}'
-                    }
-                ]
-            },
-            {
-                "choices": [
-                    {
-                        "text": '{"artist": "Test Artist", "album": "Second Album", "year": "2023", "release_type": "Album", "confidence": "high", "reasoning": "Second album"}'
-                    }
-                ]
-            },
+        mock_llm.generate.side_effect = [
+            '{"artist": "Test Artist", "album": "First Album", "year": "2022", "release_type": "Album", "confidence": "high", "reasoning": "First album"}',
+            '{"artist": "Test Artist", "album": "Second Album", "year": "2023", "release_type": "Album", "confidence": "high", "reasoning": "Second album"}',
         ]
 
         # Mock UI to accept both proposals
@@ -523,28 +485,10 @@ class TestCollectionProcessorIntegration:
         }
 
         # Mock LLM responses
-        mock_llm.side_effect = [
-            {
-                "choices": [
-                    {
-                        "text": '{"artist": "Mixed Artist", "album": "Good Album", "year": "2021", "release_type": "Album", "confidence": "high", "reasoning": "Good album"}'
-                    }
-                ]
-            },
-            {
-                "choices": [
-                    {
-                        "text": '{"artist": "Mixed Artist", "album": "Skip Album", "year": "2022", "release_type": "Album", "confidence": "low", "reasoning": "Uncertain"}'
-                    }
-                ]
-            },
-            {
-                "choices": [
-                    {
-                        "text": '{"artist": "Mixed Artist", "album": "Another Good Album", "year": "2023", "release_type": "Album", "confidence": "high", "reasoning": "Another good album"}'
-                    }
-                ]
-            },
+        mock_llm.generate.side_effect = [
+            '{"artist": "Mixed Artist", "album": "Good Album", "year": "2021", "release_type": "Album", "confidence": "high", "reasoning": "Good album"}',
+            '{"artist": "Mixed Artist", "album": "Skip Album", "year": "2022", "release_type": "Album", "confidence": "low", "reasoning": "Uncertain"}',
+            '{"artist": "Mixed Artist", "album": "Another Good Album", "year": "2023", "release_type": "Album", "confidence": "high", "reasoning": "Another good album"}',
         ]
 
         # Mock UI with mixed responses: accept, skip, accept
@@ -650,13 +594,7 @@ class TestCollectionProcessorIntegration:
         }
 
         # Mock LLM response (should only be called once for the real album)
-        mock_llm.return_value = {
-            "choices": [
-                {
-                    "text": '{"artist": "Empty Artist", "album": "Real Album", "year": "2023", "release_type": "Album", "confidence": "high", "reasoning": "Only real album"}'
-                }
-            ]
-        }
+        mock_llm.generate.return_value = '{"artist": "Empty Artist", "album": "Real Album", "year": "2023", "release_type": "Album", "confidence": "high", "reasoning": "Only real album"}'
 
         # Mock UI to accept the proposal
         processor.ui.display_folder_info = Mock()
@@ -681,7 +619,7 @@ class TestCollectionProcessorIntegration:
         assert result is True
 
         # Verify only the real album was processed
-        mock_llm.assert_called_once()  # Should only be called once
+        mock_llm.generate.assert_called_once()  # Should only be called once
         processor.ui.get_user_feedback.assert_called_once()  # Should only be called once
 
         # Verify only the real album was organized

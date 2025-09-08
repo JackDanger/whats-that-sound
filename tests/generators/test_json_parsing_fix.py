@@ -11,8 +11,10 @@ class TestJsonParsingFix:
 
     @pytest.fixture
     def mock_llm(self):
-        """Create a mock LLM for testing."""
-        return Mock()
+        """Deprecated: retained name but now returns a mock inference provider."""
+        m = Mock()
+        m.generate.return_value = "{}"
+        return m
 
     @pytest.fixture
     def generator(self, mock_llm):
@@ -33,7 +35,7 @@ class TestJsonParsingFix:
         }
         """
 
-        mock_llm.return_value = {"choices": [{"text": complex_json}]}
+        mock_llm.generate.return_value = complex_json
 
         # Create test metadata
         metadata = {
@@ -86,7 +88,7 @@ class TestJsonParsingFix:
         }
         """
 
-        mock_llm.return_value = {"choices": [{"text": special_json}]}
+        mock_llm.generate.return_value = special_json
 
         metadata = {
             "folder_name": "Test Album",
@@ -122,7 +124,7 @@ class TestJsonParsingFix:
         This should be organized under the Ruby My Dear artist folder.
         """
 
-        mock_llm.return_value = {"choices": [{"text": response_with_extra}]}
+        mock_llm.generate.return_value = response_with_extra
 
         metadata = {
             "folder_name": "Test Album",
@@ -146,7 +148,7 @@ class TestJsonParsingFix:
     def test_invalid_json_fallback_uses_metadata(self, generator, mock_llm):
         """Test that when JSON parsing fails, fallback uses detected metadata."""
         # Mock LLM to return invalid JSON
-        mock_llm.return_value = {"choices": [{"text": "This is not valid JSON at all"}]}
+        mock_llm.generate.return_value = "This is not valid JSON at all"
 
         metadata = {
             "folder_name": "[2010] - La Mort Du Colibri",

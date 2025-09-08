@@ -11,25 +11,22 @@ class TestProposalGeneratorIntegration:
     """Test ProposalGenerator with realistic LLM interactions."""
 
     @pytest.fixture
-    def mock_llm(self):
-        """Create a mock LLM that gives realistic responses."""
-        return Mock()
+    def mock_inference(self):
+        """Create a mock inference provider that gives realistic responses."""
+        m = Mock()
+        # default return value to avoid None
+        m.generate.return_value = '{"artist":"A","album":"B","year":"2023","release_type":"Album"}'
+        return m
 
     @pytest.fixture
-    def generator(self, mock_llm):
+    def generator(self, mock_inference):
         """Create a ProposalGenerator instance."""
-        return ProposalGenerator(mock_llm)
+        return ProposalGenerator(mock_inference)
 
-    def test_successful_proposal_generation(self, generator, mock_llm):
+    def test_successful_proposal_generation(self, generator, mock_inference):
         """Test successful proposal generation with realistic LLM response."""
         # Mock LLM to return valid JSON response
-        mock_llm.return_value = {
-            "choices": [
-                {
-                    "text": '{"artist": "The Beatles", "album": "Abbey Road", "year": "1969", "release_type": "Album", "confidence": "high", "reasoning": "Classic Beatles album with distinctive tracks"}'
-                }
-            ]
-        }
+        mock_inference.generate.return_value = '{"artist": "The Beatles", "album": "Abbey Road", "year": "1969", "release_type": "Album", "confidence": "high", "reasoning": "Classic Beatles album with distinctive tracks"}'
 
         # Create realistic metadata
         metadata = {
@@ -72,8 +69,8 @@ class TestProposalGeneratorIntegration:
         assert "reasoning" in proposal
 
         # Verify LLM was called with proper prompt
-        mock_llm.assert_called_once()
-        call_args = mock_llm.call_args[0]
+        mock_inference.generate.assert_called_once()
+        call_args, _ = mock_inference.generate.call_args
         prompt = call_args[0]
 
         # Check that prompt contains metadata
@@ -82,15 +79,9 @@ class TestProposalGeneratorIntegration:
         assert "Something" in prompt
         assert "Maxwell's Silver Hammer" in prompt
 
-    def test_proposal_with_artist_hint(self, generator, mock_llm):
+    def test_proposal_with_artist_hint(self, generator, mock_inference):
         """Test proposal generation with artist hint."""
-        mock_llm.return_value = {
-            "choices": [
-                {
-                    "text": '{"artist": "Led Zeppelin", "album": "Led Zeppelin IV", "year": "1971", "release_type": "Album", "confidence": "high", "reasoning": "Part of Led Zeppelin collection"}'
-                }
-            ]
-        }
+        mock_inference.generate.return_value = '{"artist": "Led Zeppelin", "album": "Led Zeppelin IV", "year": "1971", "release_type": "Album", "confidence": "high", "reasoning": "Part of Led Zeppelin collection"}'
 
         metadata = {
             "folder_name": "Led Zeppelin IV",
@@ -124,20 +115,14 @@ class TestProposalGeneratorIntegration:
         assert proposal["year"] == "1971"
 
         # Verify prompt includes artist hint
-        call_args = mock_llm.call_args[0]
+        call_args, _ = mock_inference.generate.call_args
         prompt = call_args[0]
         assert "Led Zeppelin" in prompt
         assert "artist collection" in prompt
 
-    def test_proposal_with_user_feedback(self, generator, mock_llm):
+    def test_proposal_with_user_feedback(self, generator, mock_inference):
         """Test proposal generation with user feedback."""
-        mock_llm.return_value = {
-            "choices": [
-                {
-                    "text": '{"artist": "Pink Floyd", "album": "The Dark Side of the Moon", "year": "1973", "release_type": "Album", "confidence": "high", "reasoning": "Corrected based on user feedback"}'
-                }
-            ]
-        }
+        mock_inference.generate.return_value = '{"artist": "Pink Floyd", "album": "The Dark Side of the Moon", "year": "1973", "release_type": "Album", "confidence": "high", "reasoning": "Corrected based on user feedback"}'
 
         metadata = {
             "folder_name": "Unknown Album",
@@ -172,17 +157,15 @@ class TestProposalGeneratorIntegration:
         assert proposal["year"] == "1973"
 
         # Verify prompt includes user feedback
-        call_args = mock_llm.call_args[0]
+        call_args, _ = mock_inference.generate.call_args
         prompt = call_args[0]
         assert user_feedback in prompt
         assert "reconsider" in prompt
 
-    def test_invalid_json_response_parsing(self, generator, mock_llm):
+    def test_invalid_json_response_parsing(self, generator, mock_inference):
         """Test handling of invalid JSON response from LLM."""
         # Mock LLM to return invalid JSON (non-JSON text)
-        mock_llm.return_value = {
-            "choices": [{"text": "This is not JSON at all, just plain text response"}]
-        }
+        mock_inference.generate.return_value = "This is not JSON at all, just plain text response"
 
         metadata = {
             "folder_name": "Test Album",
@@ -206,10 +189,10 @@ class TestProposalGeneratorIntegration:
         assert proposal["confidence"] == "low"  # Fallback confidence
         assert "LLM unavailable" in proposal["reasoning"]
 
-    def test_llm_failure_fallback(self, generator, mock_llm):
+    def test_llm_failure_fallback(self, generator, mock_inference):
         """Test fallback behavior when LLM fails."""
         # Mock LLM to fail
-        mock_llm.side_effect = Exception("LLM connection failed")
+        mock_inference.generate.side_effect = Exception("LLM connection failed")
 
         metadata = {
             "folder_name": "Test Album",
@@ -233,9 +216,9 @@ class TestProposalGeneratorIntegration:
         assert proposal["confidence"] == "low"
         assert "LLM unavailable" in proposal["reasoning"]
 
-    def test_fallback_with_artist_hint(self, generator, mock_llm):
+    def test_fallback_with_artist_hint(self, generator, mock_inference):
         """Test fallback behavior with artist hint."""
-        mock_llm.side_effect = Exception("LLM failed")
+        mock_inference.generate.side_effect = Exception("LLM failed")
 
         metadata = {
             "folder_name": "Some Album",
@@ -257,15 +240,9 @@ class TestProposalGeneratorIntegration:
         assert proposal["year"] == "2023"
         assert proposal["confidence"] == "low"
 
-    def test_compilation_detection(self, generator, mock_llm):
+    def test_compilation_detection(self, generator, mock_inference):
         """Test handling of compilation albums."""
-        mock_llm.return_value = {
-            "choices": [
-                {
-                    "text": '{"artist": "Various Artists", "album": "Greatest Hits of the 80s", "year": "2020", "release_type": "Compilation", "confidence": "high", "reasoning": "Multiple artists indicate compilation"}'
-                }
-            ]
-        }
+        mock_inference.generate.return_value = '{"artist": "Various Artists", "album": "Greatest Hits of the 80s", "year": "2020", "release_type": "Compilation", "confidence": "high", "reasoning": "Multiple artists indicate compilation"}'
 
         metadata = {
             "folder_name": "Greatest Hits of the 80s",
@@ -304,19 +281,13 @@ class TestProposalGeneratorIntegration:
         assert proposal["release_type"] == "Compilation"
 
         # Verify prompt indicates compilation
-        call_args = mock_llm.call_args[0]
+        call_args, _ = mock_inference.generate.call_args
         prompt = call_args[0]
         assert "Yes" in prompt  # Is Compilation: Yes
 
-    def test_prompt_building_completeness(self, generator, mock_llm):
+    def test_prompt_building_completeness(self, generator, mock_inference):
         """Test that prompts contain all necessary information."""
-        mock_llm.return_value = {
-            "choices": [
-                {
-                    "text": '{"artist": "Test", "album": "Test", "year": "2023", "release_type": "Album", "confidence": "medium", "reasoning": "Test"}'
-                }
-            ]
-        }
+        mock_inference.generate.return_value = '{"artist": "Test", "album": "Test", "year": "2023", "release_type": "Album", "confidence": "medium", "reasoning": "Test"}'
 
         metadata = {
             "folder_name": "Complex Album Name",
@@ -340,7 +311,7 @@ class TestProposalGeneratorIntegration:
         )
 
         # Verify prompt contains all expected elements
-        call_args = mock_llm.call_args[0]
+        call_args, _ = mock_inference.generate.call_args
         prompt = call_args[0]
 
         # Check folder information

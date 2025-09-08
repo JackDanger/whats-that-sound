@@ -11,9 +11,11 @@ class TestMusicOrganizerRefactored:
     """Test cases for the refactored MusicOrganizer orchestrator."""
 
     @pytest.fixture
-    def mock_llm(self):
-        """Create a mock LLM."""
-        return Mock()
+    def mock_inference(self):
+        """Create a mock inference provider."""
+        m = Mock()
+        m.generate.return_value = "single_album"
+        return m
 
     @pytest.fixture
     def complete_structure_analysis(self):
@@ -27,11 +29,11 @@ class TestMusicOrganizerRefactored:
             "directory_tree": "test_folder\n├── track1.mp3\n└── track2.mp3",
         }
 
-    @patch("src.organizer.Llama")
-    def test_init_success(self, mock_llama_class, tmp_path):
+    @patch("src.organizer.InferenceProvider")
+    def test_init_success(self, mock_inf_class, tmp_path):
         """Test successful initialization."""
-        mock_llm = Mock()
-        mock_llama_class.return_value = mock_llm
+        mock_inf = Mock()
+        mock_inf_class.return_value = mock_inf
 
         organizer = MusicOrganizer(
             tmp_path / "model.gguf", tmp_path / "source", tmp_path / "target"
@@ -39,7 +41,7 @@ class TestMusicOrganizerRefactored:
 
         assert organizer.source_dir == tmp_path / "source"
         assert organizer.target_dir == tmp_path / "target"
-        assert organizer.llm == mock_llm
+        assert organizer.inference == mock_inf
 
         # Verify components were initialized
         assert hasattr(organizer, "directory_analyzer")
@@ -52,20 +54,20 @@ class TestMusicOrganizerRefactored:
         assert hasattr(organizer, "album_processor")
         assert hasattr(organizer, "collection_processor")
 
-    @patch("src.organizer.Llama")
-    def test_init_llm_error(self, mock_llama_class, tmp_path):
-        """Test initialization with LLM error."""
-        mock_llama_class.side_effect = Exception("LLM error")
+    @patch("src.organizer.InferenceProvider")
+    def test_init_llm_error(self, mock_inf_class, tmp_path):
+        """Test initialization with inference error."""
+        mock_inf_class.side_effect = Exception("LLM error")
 
         with pytest.raises(Exception, match="LLM error"):
             MusicOrganizer(
                 tmp_path / "model.gguf", tmp_path / "source", tmp_path / "target"
             )
 
-    @patch("src.organizer.Llama")
-    def test_organize_no_folders(self, mock_llama_class, tmp_path):
+    @patch("src.organizer.InferenceProvider")
+    def test_organize_no_folders(self, mock_inf_class, tmp_path):
         """Test organize when no folders exist."""
-        mock_llama_class.return_value = Mock()
+        mock_inf_class.return_value = Mock()
 
         source_dir = tmp_path / "source"
         source_dir.mkdir()
@@ -77,10 +79,10 @@ class TestMusicOrganizerRefactored:
         # Should complete without error when no folders exist
         organizer.organize()
 
-    @patch("src.organizer.Llama")
-    def test_organize_all_already_organized(self, mock_llama_class, tmp_path):
+    @patch("src.organizer.InferenceProvider")
+    def test_organize_all_already_organized(self, mock_inf_class, tmp_path):
         """Test organize when all folders are already organized."""
-        mock_llama_class.return_value = Mock()
+        mock_inf_class.return_value = Mock()
 
         source_dir = tmp_path / "source"
         source_dir.mkdir()
@@ -96,12 +98,12 @@ class TestMusicOrganizerRefactored:
 
         organizer.organize()
 
-    @patch("src.organizer.Llama")
+    @patch("src.organizer.InferenceProvider")
     def test_organize_single_album_success(
-        self, mock_llama_class, tmp_path, complete_structure_analysis
+        self, mock_inf_class, tmp_path, complete_structure_analysis
     ):
         """Test organizing a single album successfully."""
-        mock_llama_class.return_value = Mock()
+        mock_inf_class.return_value = Mock()
 
         source_dir = tmp_path / "source"
         source_dir.mkdir()
@@ -144,12 +146,12 @@ class TestMusicOrganizerRefactored:
         organizer.structure_classifier.classify_directory_structure.assert_called_once()
         organizer.album_processor.process_single_album.assert_called_once()
 
-    @patch("src.organizer.Llama")
+    @patch("src.organizer.InferenceProvider")
     def test_organize_multi_disc_album_success(
-        self, mock_llama_class, tmp_path, complete_structure_analysis
+        self, mock_inf_class, tmp_path, complete_structure_analysis
     ):
         """Test organizing a multi-disc album successfully."""
-        mock_llama_class.return_value = Mock()
+        mock_inf_class.return_value = Mock()
 
         source_dir = tmp_path / "source"
         source_dir.mkdir()
@@ -188,12 +190,12 @@ class TestMusicOrganizerRefactored:
         # Verify the workflow
         organizer.album_processor.process_multi_disc_album.assert_called_once()
 
-    @patch("src.organizer.Llama")
+    @patch("src.organizer.InferenceProvider")
     def test_organize_artist_collection_success(
-        self, mock_llama_class, tmp_path, complete_structure_analysis
+        self, mock_inf_class, tmp_path, complete_structure_analysis
     ):
         """Test organizing an artist collection successfully."""
-        mock_llama_class.return_value = Mock()
+        mock_inf_class.return_value = Mock()
 
         source_dir = tmp_path / "source"
         source_dir.mkdir()
@@ -232,10 +234,10 @@ class TestMusicOrganizerRefactored:
         # Verify the workflow
         organizer.collection_processor.process_artist_collection.assert_called_once()
 
-    @patch("src.organizer.Llama")
-    def test_organize_no_music_files(self, mock_llama_class, tmp_path):
+    @patch("src.organizer.InferenceProvider")
+    def test_organize_no_music_files(self, mock_inf_class, tmp_path):
         """Test organizing folder with no music files."""
-        mock_llama_class.return_value = Mock()
+        mock_inf_class.return_value = Mock()
 
         source_dir = tmp_path / "source"
         source_dir.mkdir()
@@ -268,12 +270,12 @@ class TestMusicOrganizerRefactored:
         # Should skip folder with no music files - classifier should not be called
         organizer.structure_classifier.classify_directory_structure.assert_not_called()
 
-    @patch("src.organizer.Llama")
+    @patch("src.organizer.InferenceProvider")
     def test_organize_unknown_structure_type(
-        self, mock_llama_class, tmp_path, complete_structure_analysis
+        self, mock_inf_class, tmp_path, complete_structure_analysis
     ):
         """Test organizing with unknown structure type."""
-        mock_llama_class.return_value = Mock()
+        mock_inf_class.return_value = Mock()
 
         source_dir = tmp_path / "source"
         source_dir.mkdir()
@@ -301,10 +303,10 @@ class TestMusicOrganizerRefactored:
 
         # Should handle unknown structure type gracefully
 
-    @patch("src.organizer.Llama")
-    def test_organize_processing_error(self, mock_llama_class, tmp_path):
+    @patch("src.organizer.InferenceProvider")
+    def test_organize_processing_error(self, mock_inf_class, tmp_path):
         """Test organize with processing error."""
-        mock_llama_class.return_value = Mock()
+        mock_inf_class.return_value = Mock()
 
         source_dir = tmp_path / "source"
         source_dir.mkdir()
