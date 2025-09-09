@@ -130,7 +130,6 @@ def main_cli(
         organizer.proposal_generator.inference = provider
 
         # Start web server for UI
-        app = create_app(organizer)
         url = f"http://{host}:{port}"
         console.print(f"[green]Starting What's That Sound on {url}[/green]")
         # If no built frontend found, hint about dev server
@@ -142,7 +141,23 @@ def main_cli(
                 webbrowser.open(url)
             except Exception:
                 pass
-        uvicorn.run(app, host=host, port=port, reload=reload)
+
+        if reload:
+            # Persist resolved config to env so the factory can reconstruct app under reload
+            os.environ["WTS_SOURCE_DIR"] = str(source_dir)
+            os.environ["WTS_TARGET_DIR"] = str(target_dir)
+            if inference_url:
+                os.environ["WTS_INFERENCE_URL"] = inference_url
+                os.environ["LLAMA_API_BASE"] = inference_url
+                os.environ.pop("WTS_MODEL", None)
+            elif model:
+                os.environ["WTS_MODEL"] = model
+                os.environ.pop("WTS_INFERENCE_URL", None)
+            # Use import string + factory for proper reload
+            uvicorn.run("src.cli:app_factory", host=host, port=port, reload=True, factory=True)
+        else:
+            app = create_app(organizer)
+            uvicorn.run(app, host=host, port=port, reload=False)
 
     except click.ClickException:
         raise
@@ -156,3 +171,62 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# --- Factory for uvicorn --reload ---
+def app_factory():
+    """Build FastAPI app from environment settings. Used by uvicorn with --reload."""
+    project_root = Path(__file__).resolve().parent.parent
+    # Resolve dirs
+    source_dir = os.getenv("WTS_SOURCE_DIR")
+    target_dir = os.getenv("WTS_TARGET_DIR")
+    if not source_dir:
+        if (project_root / "tmp-src").exists():
+            source_dir = str(project_root / "tmp-src")
+        else:
+            source_dir = str(Path.home() / "Music" / "Unsorted")
+    if not target_dir:
+        if (project_root / "tmp-dst").exists():
+            target_dir = str(project_root / "tmp-dst")
+        else:
+            target_dir = str(Path.home() / "Music" / "Organized")
+
+    # Inference from env
+    model = os.getenv("WTS_MODEL")
+    inference_url = os.getenv("WTS_INFERENCE_URL") or os.getenv("LLAMA_API_BASE")
+
+    # Create provider
+    if inference_url:
+        os.environ["LLAMA_API_BASE"] = inference_url
+        provider = InferenceProvider(provider="llama", model="", llama_base_url=inference_url)
+    elif model:
+        normalized = model.lower()
+        if normalized.startswith("gpt") or normalized.startswith("o"):
+            token = os.getenv("OPENAI_API_TOKEN") or os.getenv("OPENAI_API_KEY")
+            if not token:
+                raise RuntimeError("OPENAI_API_TOKEN is required for OpenAI models")
+            provider = InferenceProvider(provider="openai", model=model, openai_api_key=token)
+        elif normalized.startswith("gemini"):
+            token = os.getenv("GEMINI_API_TOKEN") or os.getenv("GOOGLE_API_KEY")
+            if not token:
+                raise RuntimeError("GEMINI_API_TOKEN is required for Gemini models")
+            provider = InferenceProvider(provider="gemini", model=model, gemini_api_key=token)
+        else:
+            provider = InferenceProvider(provider="llama", model=normalized)
+    else:
+        # Default local llama server
+        inference_url = "http://localhost:11434/v1"
+        os.environ["LLAMA_API_BASE"] = inference_url
+        provider = InferenceProvider(provider="llama", model="", llama_base_url=inference_url)
+
+    # Build organizer
+    src_path = Path(source_dir)
+    dst_path = Path(target_dir)
+    dst_path.mkdir(parents=True, exist_ok=True)
+    src_path.mkdir(parents=True, exist_ok=True)
+
+    organizer = MusicOrganizer(Path("model"), src_path, dst_path)
+    organizer.inference = provider
+    organizer.structure_classifier.inference = provider
+    organizer.proposal_generator.inference = provider
+
+    return create_app(organizer)
