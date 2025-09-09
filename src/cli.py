@@ -146,6 +146,7 @@ def main_cli(
             # Persist resolved config to env so the factory can reconstruct app under reload
             os.environ["WTS_SOURCE_DIR"] = str(source_dir)
             os.environ["WTS_TARGET_DIR"] = str(target_dir)
+            os.environ["WTS_DEV"] = "1"
             if inference_url:
                 os.environ["WTS_INFERENCE_URL"] = inference_url
                 os.environ["LLAMA_API_BASE"] = inference_url

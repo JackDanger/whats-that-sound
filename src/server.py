@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+import os
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -168,14 +169,20 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
                 await asyncio.sleep(1)
         return StreamingResponse(gen(), media_type="text/event-stream")
 
-    # Mount built frontend (production) last so /api/* keeps priority
-    try:
-        project_root = Path(__file__).resolve().parent.parent
-        dist_dir = project_root / "frontend" / "dist"
-        if dist_dir.exists():
-            app.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="frontend")
-    except Exception:
-        pass
+    # Development mode: redirect root to Vite dev server for HMR
+    if os.getenv("WTS_DEV") == "1":
+        @app.get("/")
+        async def dev_index():
+            return RedirectResponse(url="http://localhost:5173/")
+    else:
+        # Mount built frontend (production) last so /api/* keeps priority
+        try:
+            project_root = Path(__file__).resolve().parent.parent
+            dist_dir = project_root / "frontend" / "dist"
+            if dist_dir.exists():
+                app.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="frontend")
+        except Exception:
+            pass
 
     return app
 
