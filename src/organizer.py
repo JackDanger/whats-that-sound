@@ -330,12 +330,25 @@ class ProcessingPipeline:
         refresher = ProgressRefresher(self.organizer)
         refresher.start()
 
-        for idx, folder in enumerate(self.folders, 1):
-            processor = FolderProcessor(self.organizer, folder, idx, len(self.folders))
-            # Prefer ready proposals from jobstore to maximize interactivity
-            ready = self.organizer.jobstore.get_result(folder)
-            if ready:
-                self.organizer.ui.display_progress(idx, len(self.folders), folder.name)
+        idx = 0
+        total = len(self.folders)
+        pending = list(self.folders)
+        while pending:
+            # Drain any ready proposals first to present decisions ASAP
+            made_progress = False
+            for folder in list(pending):
+                ready = self.organizer.jobstore.get_result(folder)
+                if not ready:
+                    continue
+                idx += 1
+                self.organizer.ui.display_progress(idx, total, folder.name)
+                # Show quick context for the folder
+                try:
+                    metadata = self.organizer.directory_analyzer.extract_folder_metadata(folder)
+                    self.organizer.ui.display_folder_info(metadata)
+                    self.organizer.ui.display_file_samples(metadata.get("files", []))
+                except Exception:
+                    pass
                 self.organizer.ui.display_llm_proposal(ready)
                 feedback = self.organizer.ui.get_user_feedback(ready)
                 if feedback["action"] == "accept":
@@ -343,13 +356,29 @@ class ProcessingPipeline:
                     self.organizer.file_organizer.organize_folder(folder, feedback["proposal"])
                     self.organizer.progress_tracker.increment_processed()
                     self.organizer.progress_tracker.increment_successful(feedback["proposal"])
-                    console.print("\n" + "─" * 80 + "\n")
-                    continue
                 elif feedback["action"] == "reconsider":
                     # Re-queue reconsideration job via jobstore
                     metadata = self.organizer.directory_analyzer.extract_folder_metadata(folder)
                     self.organizer.jobstore.enqueue(folder, metadata, user_feedback=feedback.get("feedback"))
-                    # Fall through to normal flow (will wait for proposal later)
+                    # Do not advance idx for reconsider; it will be revisited when ready
+                    idx -= 1
+                elif feedback["action"] == "skip":
+                    self.organizer.progress_tracker.increment_processed()
+                    self.organizer.progress_tracker.increment_skipped()
+                elif feedback["action"] == "cancel":
+                    refresher.stop()
+                    return
+                console.print("\n" + "─" * 80 + "\n")
+                pending.remove(folder)
+                made_progress = True
+
+            if made_progress:
+                continue
+
+            # If nothing ready, process the next folder (will analyze, queue, then proceed)
+            folder = pending.pop(0)
+            idx += 1
+            processor = FolderProcessor(self.organizer, folder, idx, total)
             processor.process()
 
             # Background management

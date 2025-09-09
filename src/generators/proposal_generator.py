@@ -194,8 +194,12 @@ JSON schema:
                 if all(field in proposal for field in required):
                     return proposal
         except Exception as e:
-            console.print(f"[red]JSON parsing failed: {e}[/red]")
-            console.print(f"[dim]Raw LLM response: {text[:100]}...[/dim]")
+            # Quiet terminal; log details
+            try:
+                self._logger.warning("JSON PARSE ERROR: %s", e)
+                self._logger.debug("RAW RESPONSE SNIPPET: %s", text[:500])
+            except Exception:
+                pass
 
         # If parsing fails, return None so caller can handle fallback
         return None
