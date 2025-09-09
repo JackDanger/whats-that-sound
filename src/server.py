@@ -7,11 +7,12 @@ import os
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse, RedirectResponse
+from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .organizer import MusicOrganizer
+import httpx
 
 
 def create_app(organizer: MusicOrganizer) -> FastAPI:
@@ -173,9 +174,54 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
 
     # Development mode: redirect root to Vite dev server for HMR
     if os.getenv("WTS_DEV") == "1":
-        @app.get("/")
-        async def dev_index():
-            return RedirectResponse(url="http://localhost:5173/")
+        # Simple reverse proxy to Vite dev server for HMR in dev.
+        VITE_DEV_BASE = os.getenv("WTS_VITE_URL", "http://127.0.0.1:5173")
+        project_root = Path(__file__).resolve().parent.parent
+        dist_dir = project_root / "frontend" / "dist"
+
+        async def proxy_request(request: Request, path: str):
+            url = f"{VITE_DEV_BASE}{path}"
+            # Stream request to Vite using httpx
+            async with httpx.AsyncClient(follow_redirects=False, timeout=30.0) as client:
+                headers = {k.decode(): v.decode() for k, v in request.headers.raw if k.lower() not in {b"host"}}
+                if request.method.upper() in {"GET", "HEAD"}:
+                    r = await client.request(request.method, url, headers=headers)
+                else:
+                    body = await request.body()
+                    r = await client.request(request.method, url, headers=headers, content=body)
+            # Prepare streaming response with proxied status/headers/body
+            response_headers = [(k.decode() if isinstance(k, bytes) else k, v) for k, v in r.headers.raw if k.lower() not in {b"transfer-encoding", b"content-encoding"}]
+            return StreamingResponse(iter([r.content])), r.status_code, response_headers
+
+        @app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
+        async def dev_proxy(full_path: str, request: Request):
+            # Only proxy non-API routes; API paths are served by FastAPI
+            if full_path.startswith("api/"):
+                raise HTTPException(404)
+            if full_path == "":
+                path = "/"
+            else:
+                path = "/" + full_path
+            try:
+                proxied_body, status, headers = await proxy_request(request, path)
+                return StreamingResponse(proxied_body, status_code=status, headers=dict(headers))
+            except httpx.HTTPError:
+                # Fallback: serve built asset if available
+                if dist_dir.exists():
+                    # Resolve file within dist
+                    candidate = dist_dir / full_path
+                    if candidate.is_file():
+                        return FileResponse(str(candidate))
+                    index_file = dist_dir / "index.html"
+                    if index_file.is_file():
+                        return FileResponse(str(index_file))
+                # Else: return a clear 502 with guidance
+                msg = (
+                    f"Vite dev server unreachable at {VITE_DEV_BASE}.\n"
+                    "Start it with 'npm run dev' in ./frontend, or build with 'npm run build' and restart without WTS_DEV.\n"
+                    "You can also set WTS_VITE_URL to point at a reachable Vite dev URL."
+                )
+                return HTMLResponse(msg.replace("\n", "<br>"), status_code=502)
     else:
         # Mount built frontend (production) last so /api/* keeps priority
         try:
