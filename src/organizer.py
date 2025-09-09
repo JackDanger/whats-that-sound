@@ -16,6 +16,8 @@ import os
 from .worker import run_worker
 import threading
 import time
+from rich.panel import Panel
+from pathlib import Path
 
 console = Console()
 
@@ -481,6 +483,7 @@ class ProgressRefresher:
         self.interval = interval
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
+        self._recent: list[str] = []
 
     def start(self):
         self._stop.clear()
@@ -499,10 +502,13 @@ class ProgressRefresher:
                 running = counts.get("in_progress", 0)
                 done = counts.get("completed", 0)
                 failed = counts.get("failed", 0)
-                # Render a concise status line
-                console.print(
-                    f"[dim]Queue: {queued} | Running: {running} | Ready: {done} | Failed: {failed}[/dim]"
-                )
+                # Fetch a few recently completed items to show
+                completed = self.organizer.jobstore.fetch_completed(limit=3)
+                lines = [f"Queue: {queued} | Running: {running} | Ready: {done} | Failed: {failed}"]
+                for _, folder_path, _ in completed:
+                    lines.append(f"Ready: {Path(folder_path).name}")
+                panel_text = "\n".join(lines)
+                console.print(Panel(panel_text, title="Background", border_style="dim", expand=False))
             except Exception:
                 pass
             time.sleep(self.interval)

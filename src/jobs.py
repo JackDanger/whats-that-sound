@@ -172,3 +172,27 @@ class SQLiteJobStore:
         return None
 
 
+    def fetch_completed(self, limit: int = 10) -> List[Tuple[int, str, Dict[str, Any]]]:
+        """Fetch recently completed jobs.
+
+        Returns list of (job_id, folder_path, result_dict)
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, folder_path, result_json FROM jobs WHERE status='completed' ORDER BY completed_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            out: List[Tuple[int, str, Dict[str, Any]]] = []
+            for job_id, folder_path, result_json in rows:
+                try:
+                    result = json.loads(result_json) if result_json else {}
+                except Exception:
+                    result = {}
+                out.append((int(job_id), folder_path, result))
+            return out
+
+    def delete_job(self, job_id: int) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+
+
