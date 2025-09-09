@@ -11,6 +11,10 @@ from pathlib import Path
 from rich.console import Console
 import os
 import webbrowser
+import subprocess
+import signal
+import sys
+import shutil
 
 from .organizer import MusicOrganizer
 from .inference import InferenceProvider
@@ -38,7 +42,8 @@ console = Console()
 @click.option("--host", default=os.getenv("HOST", "0.0.0.0"), show_default=True, help="Server host")
 @click.option("--port", default=int(os.getenv("PORT", "8000")), show_default=True, help="Server port", type=int)
 @click.option("--open-browser/--no-open-browser", default=True, show_default=True, help="Open browser at startup")
-@click.option("--reload/--no-reload", default=False, show_default=True, help="Auto-reload server (dev)")
+@click.option("--reload/--no-reload", default=False, show_default=True, help="Auto-reload backend (dev)")
+@click.option("--vite-dev/--no-vite-dev", default=None, help="Run Vite dev server for HMR (defaults to match --reload)")
 def main_cli(
     source_dir: Path | None,
     target_dir: Path | None,
@@ -48,6 +53,7 @@ def main_cli(
     port: int,
     open_browser: bool,
     reload: bool,
+    vite_dev: bool | None,
 ):
     """Serve the web UI with a FastAPI backend.
 
@@ -142,20 +148,87 @@ def main_cli(
             except Exception:
                 pass
 
-        if reload:
-            # Persist resolved config to env so the factory can reconstruct app under reload
-            os.environ["WTS_SOURCE_DIR"] = str(source_dir)
-            os.environ["WTS_TARGET_DIR"] = str(target_dir)
-            os.environ["WTS_DEV"] = "1"
+        # In dev, default vite_dev to match reload
+        if vite_dev is None:
+            vite_dev = reload
+
+        if reload or vite_dev:
+            # Orchestrate child processes: uvicorn (reload) and optional vite dev
+            env = os.environ.copy()
+            env["WTS_SOURCE_DIR"] = str(source_dir)
+            env["WTS_TARGET_DIR"] = str(target_dir)
+            env["WTS_DEV"] = "1"
             if inference_url:
-                os.environ["WTS_INFERENCE_URL"] = inference_url
-                os.environ["LLAMA_API_BASE"] = inference_url
-                os.environ.pop("WTS_MODEL", None)
+                env["WTS_INFERENCE_URL"] = inference_url
+                env["LLAMA_API_BASE"] = inference_url
+                env.pop("WTS_MODEL", None)
             elif model:
-                os.environ["WTS_MODEL"] = model
-                os.environ.pop("WTS_INFERENCE_URL", None)
-            # Use import string + factory for proper reload
-            uvicorn.run("src.cli:app_factory", host=host, port=port, reload=True, factory=True)
+                env["WTS_MODEL"] = model
+                env.pop("WTS_INFERENCE_URL", None)
+
+            processes: list[subprocess.Popen] = []
+            try:
+                # Start uvicorn in reload mode using import string + factory
+                uvicorn_cmd = [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "src.cli:app_factory",
+                    "--host",
+                    host,
+                    "--port",
+                    str(port),
+                    "--reload",
+                    "--factory",
+                ]
+                processes.append(subprocess.Popen(uvicorn_cmd, env=env))
+
+                # Optionally start Vite dev server
+                if vite_dev:
+                    npm = shutil.which("npm")
+                    if not npm:
+                        console.print("[yellow]npm not found on PATH; skipping Vite dev server. Install Node or run it manually.[/yellow]")
+                    else:
+                        frontend_dir = project_root / "frontend"
+                        vite_cmd = [npm, "run", "dev"]
+                        processes.append(subprocess.Popen(vite_cmd, cwd=str(frontend_dir), env=env))
+
+                # Open browser once
+                if open_browser:
+                    try:
+                        webbrowser.open(url)
+                    except Exception:
+                        pass
+
+                # Handle signals and wait
+                def handle_signal(signum, frame):
+                    for p in processes:
+                        try:
+                            p.terminate()
+                        except Exception:
+                            pass
+                signal.signal(signal.SIGINT, handle_signal)
+                signal.signal(signal.SIGTERM, handle_signal)
+
+                # Wait for uvicorn to exit; if it exits, shut down vite as well
+                exit_code = processes[0].wait()
+                for p in processes[1:]:
+                    try:
+                        p.terminate()
+                        p.wait(timeout=5)
+                    except Exception:
+                        try:
+                            p.kill()
+                        except Exception:
+                            pass
+                sys.exit(exit_code)
+            finally:
+                for p in processes:
+                    if p.poll() is None:
+                        try:
+                            p.kill()
+                        except Exception:
+                            pass
         else:
             app = create_app(organizer)
             uvicorn.run(app, host=host, port=port, reload=False)
