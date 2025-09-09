@@ -41,6 +41,9 @@ def main_cli(source_dir: Path, target_dir: Path, model: str | None, inference_ur
         # Configure inference
         if inference_url:
             # Use llama HTTP server
+            import os as _os
+            # Propagate to worker/child processes
+            _os.environ["LLAMA_API_BASE"] = inference_url
             provider = InferenceProvider(provider="llama", model="", llama_base_url=inference_url)
         else:
             # Map model to provider heuristically

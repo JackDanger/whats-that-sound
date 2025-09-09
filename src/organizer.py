@@ -8,7 +8,6 @@ from .generators import ProposalGenerator
 from .inference import InferenceProvider
 from .organizers import FileOrganizer
 from .processors import AlbumProcessor, CollectionProcessor
-from .processors.background_processor import BackgroundProposalProcessor
 from .trackers import ProgressTracker, StateManager
 from .ui import InteractiveUI
 from .jobs import SQLiteJobStore
@@ -52,16 +51,9 @@ class MusicOrganizer:
         self.ui = InteractiveUI()
         self.jobstore = SQLiteJobStore()
 
-        # Background processor for LLM inference (in-process fallback)
-        self.background_processor = BackgroundProposalProcessor(
-            self.proposal_generator, max_prefetch=2
-        )
-
-        # Optional external worker process using SQLite job store
-        self.worker_process = None
-        if (os.getenv("WTS_ENABLE_WORKER") or "").lower() in ("1", "true", "yes"):
-            self.worker_process = multiprocessing.Process(target=run_worker, daemon=True)
-            self.worker_process.start()
+        # Dedicated external worker process using SQLite job store
+        self.worker_process = multiprocessing.Process(target=run_worker, daemon=True)
+        self.worker_process.start()
 
         # Processors
         self.album_processor = AlbumProcessor(
@@ -70,7 +62,7 @@ class MusicOrganizer:
             self.file_organizer,
             self.state_manager,
             self.ui,
-            self.background_processor,
+            None,
         )
 
         self.collection_processor = CollectionProcessor(
@@ -79,7 +71,7 @@ class MusicOrganizer:
             self.file_organizer,
             self.state_manager,
             self.ui,
-            self.background_processor,
+            None,
         )
 
     def organize(self):
@@ -262,11 +254,11 @@ class OrganizationSession:
 
     def start(self):
         """Start the organization session."""
-        self.organizer.background_processor.start()
+        # Background processor removed; worker started at init
 
     def stop(self):
         """Stop the organization session and display summary."""
-        self.organizer.background_processor.stop()
+        # Let worker run; nothing to stop here for now
         self.organizer.ui.display_completion_summary(
             self.organizer.progress_tracker.get_stats()
         )
@@ -329,9 +321,8 @@ class ProcessingPipeline:
     def _manage_background_processing(self, current_idx: int):
         """Manage background processing for remaining folders."""
         # Check for source directory changes
-        if self.organizer.background_processor.check_source_dir_changed(
-            self.organizer.source_dir
-        ):
+        # Background processor removed; rely on jobstore + worker. Re-analyze if source changes is not needed here.
+        if False:
             console.print(
                 "[yellow]Source directory changed, re-analyzing remaining folders...[/yellow]"
             )
@@ -341,7 +332,8 @@ class ProcessingPipeline:
 
         # Pre-submit next folder's job if available
         if current_idx < len(self.folders):
-            self.organizer._submit_next_job(self.folders, current_idx - 1)
+            # No-op; worker consumes jobstore
+            pass
 
 
 class FolderProcessor:
