@@ -207,7 +207,7 @@ function App() {
               <div>
                 <div><b>{currentDecision.metadata.folder_name}</b> ({currentDecision.metadata.total_files} files)</div>
                 <div>Artist: {currentDecision.proposal.artist} | Album: {currentDecision.proposal.album} | Year: {currentDecision.proposal.year} | Type: {currentDecision.proposal.release_type}</div>
-                <div>{(currentDecision.proposal.reasoning || '').slice(0, 300)}</div>
+                <div id="reasoning">{(currentDecision.proposal.reasoning || '').slice(0, 300)}</div>
               </div>
             )}
           </div>

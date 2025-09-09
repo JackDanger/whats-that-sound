@@ -18,6 +18,28 @@
   filter: drop-shadow(0 0 2em #61dafbaa);
 }
 
+/* Make the reasoning div look like a block quote with quote marks and everything,
+   It's literally quoting what an AI suggests */
+#reasoning {
+  font-size: 14px;
+  font-style: italic;
+  border-left: 2px solid #646cff;
+  padding-left: 10px;
+  margin-top: 10px;
+}
+#reasoning::before {
+  content: "“";
+  font-size: 20px;
+  font-weight: bold;
+  color: #646cff;
+}
+#reasoning::after {
+  content: "”";
+  font-size: 20px;
+  font-weight: bold;
+  color: #646cff;
+}
+
 @keyframes logo-spin {
   from {
     transform: rotate(0deg);

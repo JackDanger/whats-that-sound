@@ -7,7 +7,7 @@ import os
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse, JSONResponse, RedirectResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -152,22 +152,24 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
         else:
             raise HTTPException(400, "invalid action")
 
+    # Shared SSE generator for status/events
+    async def status_event_stream(request: Request):
+        while True:
+            if await request.is_disconnected():
+                break
+            counts = organizer.jobstore.counts()
+            stats = organizer.progress_tracker.get_stats()
+            data = {
+                "counts": counts,
+                "processed": stats.get("total_processed", 0),
+                "total": len(list(organizer.source_dir.iterdir())),
+            }
+            yield f"data: {json.dumps(data)}\n\n"
+            await asyncio.sleep(1)
+
     @app.get("/api/events")
     async def events(request: Request):
-        async def gen():
-            while True:
-                if await request.is_disconnected():
-                    break
-                counts = organizer.jobstore.counts()
-                stats = organizer.progress_tracker.get_stats()
-                data = {
-                    "counts": counts,
-                    "processed": stats.get("total_processed", 0),
-                    "total": len(list(organizer.source_dir.iterdir())),
-                }
-                yield f"data: {json.dumps(data)}\n\n"
-                await asyncio.sleep(1)
-        return StreamingResponse(gen(), media_type="text/event-stream")
+        return StreamingResponse(status_event_stream(request), media_type="text/event-stream")
 
     # Development mode: redirect root to Vite dev server for HMR
     if os.getenv("WTS_DEV") == "1":
