@@ -332,6 +332,24 @@ class ProcessingPipeline:
 
         for idx, folder in enumerate(self.folders, 1):
             processor = FolderProcessor(self.organizer, folder, idx, len(self.folders))
+            # Prefer ready proposals from jobstore to maximize interactivity
+            ready = self.organizer.jobstore.get_result(folder)
+            if ready:
+                self.organizer.ui.display_progress(idx, len(self.folders), folder.name)
+                self.organizer.ui.display_llm_proposal(ready)
+                feedback = self.organizer.ui.get_user_feedback(ready)
+                if feedback["action"] == "accept":
+                    self.organizer.state_manager.save_proposal_tracker(folder, feedback["proposal"])
+                    self.organizer.file_organizer.organize_folder(folder, feedback["proposal"])
+                    self.organizer.progress_tracker.increment_processed()
+                    self.organizer.progress_tracker.increment_successful(feedback["proposal"])
+                    console.print("\n" + "─" * 80 + "\n")
+                    continue
+                elif feedback["action"] == "reconsider":
+                    # Re-queue reconsideration job via jobstore
+                    metadata = self.organizer.directory_analyzer.extract_folder_metadata(folder)
+                    self.organizer.jobstore.enqueue(folder, metadata, user_feedback=feedback.get("feedback"))
+                    # Fall through to normal flow (will wait for proposal later)
             processor.process()
 
             # Background management
@@ -452,8 +470,9 @@ class ProgressRefresher:
                 running = counts.get("in_progress", 0)
                 done = counts.get("completed", 0)
                 failed = counts.get("failed", 0)
+                # Render a concise status line
                 console.print(
-                    f"[dim]Jobs: queued={queued} in_progress={running} completed={done} failed={failed}[/dim]"
+                    f"[dim]Queue: {queued} | Running: {running} | Ready: {done} | Failed: {failed}[/dim]"
                 )
             except Exception:
                 pass

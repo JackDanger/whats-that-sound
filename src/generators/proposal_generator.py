@@ -43,7 +43,7 @@ class ProposalGenerator:
         Returns:
             Dictionary containing the proposal
         """
-        console.print("\n[cyan]Consulting AI for organization proposal...[/cyan]")
+        # Quiet terminal; logs capture details
 
         # Build prompt
         prompt = self._build_prompt(metadata, user_feedback, artist_hint)
@@ -67,8 +67,7 @@ class ProposalGenerator:
             return self._fallback_proposal(metadata, artist_hint)
 
         except Exception as e:
-            print(e)
-            console.print(f"[red]Error getting LLM proposal: {e}[/red]")
+            self._logger.error("INFERENCE ERROR: %s", e)
             # Return a basic proposal based on metadata analysis
             return self._fallback_proposal(metadata, artist_hint)
 

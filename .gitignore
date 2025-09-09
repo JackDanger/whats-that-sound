@@ -5,3 +5,4 @@ uv.lock
 whats_that_sound.db
 whats_that_sound.db-shm
 whats_that_sound.db-wal
+wts_inference.log
