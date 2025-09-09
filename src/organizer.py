@@ -14,6 +14,8 @@ from .jobs import SQLiteJobStore
 import multiprocessing
 import os
 from .worker import run_worker
+import threading
+import time
 
 console = Console()
 
@@ -324,12 +326,18 @@ class ProcessingPipeline:
         # Pre-analyze first few folders and submit background jobs
         self.organizer._prefetch_proposals(self.folders)
 
+        # Start a lightweight progress refresher that shows jobstore counts
+        refresher = ProgressRefresher(self.organizer)
+        refresher.start()
+
         for idx, folder in enumerate(self.folders, 1):
             processor = FolderProcessor(self.organizer, folder, idx, len(self.folders))
             processor.process()
 
             # Background management
             self._manage_background_processing(idx)
+
+        refresher.stop()
 
     def _manage_background_processing(self, current_idx: int):
         """Manage background processing for remaining folders."""
@@ -416,3 +424,37 @@ class FolderProcessor:
         self.organizer.progress_tracker.increment_processed()
         if not success:
             self.organizer.progress_tracker.increment_skipped()
+
+
+class ProgressRefresher:
+    """Displays periodic jobstore progress without flooding the UI."""
+
+    def __init__(self, organizer: MusicOrganizer, interval: float = 1.0):
+        self.organizer = organizer
+        self.interval = interval
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def start(self):
+        self._stop.clear()
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout=1.0)
+
+    def _run(self):
+        while not self._stop.is_set():
+            try:
+                counts = self.organizer.jobstore.counts()
+                queued = counts.get("queued", 0)
+                running = counts.get("in_progress", 0)
+                done = counts.get("completed", 0)
+                failed = counts.get("failed", 0)
+                console.print(
+                    f"[dim]Jobs: queued={queued} in_progress={running} completed={done} failed={failed}[/dim]"
+                )
+            except Exception:
+                pass
+            time.sleep(self.interval)

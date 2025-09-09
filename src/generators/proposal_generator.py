@@ -6,6 +6,8 @@ from typing import Dict, Optional
 from src.inference import InferenceProvider
 from rich.console import Console
 import re as _re
+import logging
+import os
 
 console = Console()
 
@@ -16,6 +18,14 @@ class ProposalGenerator:
     def __init__(self, inference: InferenceProvider):
         """Initialize the proposal generator with a unified inference interface."""
         self.inference = inference
+        self._logger = logging.getLogger("wts.inference")
+        if not self._logger.handlers:
+            log_path = os.getenv("WTS_LOG_PATH", str(os.path.join(os.getcwd(), "wts_inference.log")))
+            handler = logging.FileHandler(log_path, encoding="utf-8")
+            formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+            handler.setFormatter(formatter)
+            self._logger.addHandler(handler)
+            self._logger.setLevel(logging.DEBUG)
 
     def get_llm_proposal(
         self,
@@ -37,13 +47,13 @@ class ProposalGenerator:
 
         # Build prompt
         prompt = self._build_prompt(metadata, user_feedback, artist_hint)
-        print(prompt)
+        self._logger.debug("PROMPT BEGIN\n%s\nPROMPT END", prompt)
 
         # Get LLM response
         try:
             # Parse response
             text = self.inference.generate(prompt).strip()
-            print(text)
+            self._logger.debug("RESPONSE BEGIN\n%s\nRESPONSE END", text)
 
             # Try to extract JSON
             proposal = self._parse_llm_response(text)
