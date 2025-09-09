@@ -28,6 +28,7 @@ def _process_one(jobstore: SQLiteJobStore, generator: ProposalGenerator, job_id:
         jobstore.complete(job_id, result)
     except Exception as e:
         jobstore.fail(job_id, str(e))
+        raise e
 
 
 def run_worker(max_workers: Optional[int] = None):

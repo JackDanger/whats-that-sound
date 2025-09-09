@@ -3,6 +3,7 @@
 import click
 from pathlib import Path
 from rich.console import Console
+import os
 
 from .organizer import MusicOrganizer
 from .inference import InferenceProvider
@@ -43,23 +44,20 @@ def main_cli(source_dir: Path, target_dir: Path, model: str | None, inference_ur
         # Configure inference
         if inference_url:
             # Use llama HTTP server
-            import os as _os
             # Propagate to worker/child processes
-            _os.environ["LLAMA_API_BASE"] = inference_url
+            os.environ["LLAMA_API_BASE"] = inference_url
             provider = InferenceProvider(provider="llama", model="", llama_base_url=inference_url)
         else:
             # Map model to provider heuristically
             normalized = model.lower()
             if normalized.startswith("gpt") or normalized.startswith("o"):
                 # OpenAI family
-                import os as _os
-                token = _os.getenv("OPENAI_API_TOKEN") or _os.getenv("OPENAI_API_KEY")
+                token = os.getenv("OPENAI_API_TOKEN") or os.getenv("OPENAI_API_KEY")
                 if not token:
                     raise click.ClickException("OPENAI_API_TOKEN is required for OpenAI models")
                 provider = InferenceProvider(provider="openai", model=model, openai_api_key=token)
             elif normalized.startswith("gemini"):
-                import os as _os
-                token = _os.getenv("GEMINI_API_TOKEN") or _os.getenv("GOOGLE_API_KEY")
+                token = os.getenv("GEMINI_API_TOKEN") or os.getenv("GOOGLE_API_KEY")
                 if not token:
                     raise click.ClickException("GEMINI_API_TOKEN is required for Gemini models")
                 provider = InferenceProvider(provider="gemini", model=model, gemini_api_key=token)
