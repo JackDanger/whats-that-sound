@@ -26,6 +26,7 @@ function App() {
   const [currentDecision, setCurrentDecision] = useState<any | null>(null)
   const [selectedPath, setSelectedPath] = useState<string>('')
   const [busyPaths, setBusyPaths] = useState(false)
+  const [applyHidden, setApplyHidden] = useState(false)
   const pickerOpen = useRef<null | 'source' | 'target'>(null)
   const [pickCurrent, setPickCurrent] = useState<string>('/')
   const [pickList, setPickList] = useState<{ name: string; path: string }[]>([])
@@ -44,6 +45,10 @@ function App() {
   async function refreshStatus() {
     const s = await fetchJSON<Status>('/api/status')
     setStatus(s)
+    if (!currentDecision && s.ready && s.ready.length > 0) {
+      // Auto-load the first ready item to avoid idle "waiting" state
+      loadDecision(s.ready[0].path)
+    }
   }
 
   async function loadDecision(path: string) {
@@ -120,13 +125,14 @@ function App() {
   }
 
   async function applyPaths(action: 'confirm' | 'cancel') {
-    if (action === 'confirm') setBusyPaths(true)
+    if (action === 'confirm') { setBusyPaths(true); setApplyHidden(true) }
     try {
       await fetchJSON('/api/paths', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) })
       await refreshPaths()
       await refreshStatus()
     } finally {
       setBusyPaths(false)
+      if (action === 'cancel') setApplyHidden(false)
     }
   }
 
@@ -143,14 +149,16 @@ function App() {
         <div id="paths">
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 6 }}>
             <b>Source:</b> <span id="curSource">{curSource || '-'}</span>
-            <button id="changeSourceBtn" onClick={() => openPicker('source')}>Change</button>
+            <button id="changeSourceBtn" onClick={() => openPicker('source')} disabled={busyPaths}>Change</button>
           </div>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
             <b>Target:</b> <span id="curTarget">{curTarget || '-'}</span>
-            <button id="changeTargetBtn" onClick={() => openPicker('target')}>Change</button>
+            <button id="changeTargetBtn" onClick={() => openPicker('target')} disabled={busyPaths}>Change</button>
           </div>
-          <div id="staged" style={{ color: '#9bb', fontSize: 12, marginTop: 6 }}>{stagedInfo}</div>
-          {(stagedSource || stagedTarget) && (
+          {!applyHidden && (
+            <div id="staged" style={{ color: '#9bb', fontSize: 12, marginTop: 6 }}>{stagedInfo}</div>
+          )}
+          {(stagedSource || stagedTarget) && !applyHidden && (
             <div id="applyBtns" style={{ marginTop: 6 }}>
               <button onClick={() => applyPaths('confirm')} disabled={busyPaths}>Confirm</button>
               <button onClick={() => applyPaths('cancel')} disabled={busyPaths}>Cancel</button>
