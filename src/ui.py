@@ -5,6 +5,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.layout import Layout
+from rich.live import Live
 from rich.prompt import Prompt, Confirm
 from rich.syntax import Syntax
 from prompt_toolkit import prompt
@@ -22,6 +23,7 @@ class InteractiveUI:
     def __init__(self):
         """Initialize the UI."""
         self.console = console
+        self._live: Optional[Live] = None
 
     def display_folder_info(self, metadata: Dict):
         """Display information about a folder being processed."""
@@ -244,6 +246,67 @@ class InteractiveUI:
             border_style="green",
         )
         self.console.print(panel)
+
+    # --- New Presentation UI helpers ---
+    def start_live(self):
+        if self._live is None:
+            self._live = Live(auto_refresh=True, console=self.console, refresh_per_second=4)
+            self._live.start()
+
+    def stop_live(self):
+        if self._live is not None:
+            self._live.stop()
+            self._live = None
+
+    def render_dashboard(
+        self,
+        source_dir: str,
+        target_dir: str,
+        queued: int,
+        running: int,
+        ready: int,
+        failed: int,
+        processed: int,
+        total: int,
+        deciding_now: Optional[str],
+        ready_examples: Optional[list[str]] = None,
+    ):
+        # Layout: top summary, background status right, details center
+        summary = Panel(
+            f"Source: [cyan]{source_dir}[/cyan]\nTarget: [cyan]{target_dir}[/cyan]",
+            title="Paths",
+            border_style="blue",
+        )
+
+        bg_lines = [
+            f"Queue: {queued}",
+            f"Running: {running}",
+            f"Ready: {ready}",
+            f"Failed: {failed}",
+            f"Processed: {processed}/{total}",
+        ]
+        if ready_examples:
+            for name in ready_examples[:3]:
+                bg_lines.append(f"Ready: {name}")
+        background = Panel("\n".join(bg_lines), title="Background", border_style="dim")
+
+        current = Panel(
+            f"{deciding_now or '(waiting for a ready proposal...)'}",
+            title="Current",
+            border_style="green",
+        )
+
+        layout = Layout()
+        layout.split_row(
+            Layout(summary, name="left", ratio=2),
+            Layout(current, name="center", ratio=3),
+            Layout(background, name="right", ratio=2),
+        )
+
+        if self._live is not None:
+            self._live.update(layout)
+        else:
+            self.console.print(layout)
 
     def display_completion_summary(self, summary: Dict):
         """Display a summary when organization is complete."""

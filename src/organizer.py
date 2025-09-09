@@ -83,6 +83,8 @@ class MusicOrganizer:
         session = OrganizationSession(self)
         try:
             session.start()
+            # Start live dashboard
+            self.ui.start_live()
 
             folders = FolderDiscovery(self.source_dir, self.state_manager).discover()
             if not folders:
@@ -108,6 +110,7 @@ class MusicOrganizer:
 
         finally:
             session.stop()
+            self.ui.stop_live()
 
     def _process_folder_by_type(
         self, folder: Path, structure_type: str, structure_analysis: dict
@@ -336,6 +339,26 @@ class ProcessingPipeline:
         total = len(self.folders)
         pending = list(self.folders)
         while pending:
+            # Update dashboard
+            try:
+                counts = self.organizer.jobstore.counts()
+                ready_names = [Path(fp).name for _, fp, _ in self.organizer.jobstore.fetch_completed(limit=3)]
+                deciding = pending[0].name if pending else ""
+                self.organizer.ui.render_dashboard(
+                    str(self.organizer.source_dir),
+                    str(self.organizer.target_dir),
+                    counts.get("queued", 0),
+                    counts.get("in_progress", 0),
+                    counts.get("completed", 0),
+                    counts.get("failed", 0),
+                    self.organizer.progress_tracker.get_stats().get("total_processed", 0),
+                    total,
+                    deciding,
+                    ready_names,
+                )
+            except Exception:
+                pass
+
             # Drain any ready proposals first to present decisions ASAP
             made_progress = False
             for folder in list(pending):
