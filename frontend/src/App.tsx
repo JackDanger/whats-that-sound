@@ -24,6 +24,7 @@ function App() {
   const [paths, setPaths] = useState<PathsResponse | null>(null)
   const [status, setStatus] = useState<Status | null>(null)
   const [currentDecision, setCurrentDecision] = useState<any | null>(null)
+  const [selectedPath, setSelectedPath] = useState<string>('')
   const [busyPaths, setBusyPaths] = useState(false)
   const pickerOpen = useRef<null | 'source' | 'target'>(null)
   const [pickCurrent, setPickCurrent] = useState<string>('/')
@@ -48,6 +49,7 @@ function App() {
   async function loadDecision(path: string) {
     const d = await fetchJSON<any>('/api/folder?path=' + encodeURIComponent(path))
     setCurrentDecision(d)
+    setSelectedPath(path)
   }
 
   async function decide(path: string, action: 'accept' | 'reconsider' | 'skip', proposal?: any, feedback?: string) {
@@ -204,12 +206,12 @@ function App() {
           <div id="actions" style={{ marginTop: 8 }}>
             {currentDecision && (
               <>
-                <button onClick={() => decide(currentDecision.metadata.path || '', 'accept', currentDecision.proposal)}>Accept</button>
+                <button onClick={() => decide(selectedPath, 'accept', currentDecision.proposal)}>Accept</button>
                 <button onClick={() => {
                   const fb = window.prompt('Feedback?')
-                  if (fb !== null) decide(currentDecision.metadata.path || '', 'reconsider', undefined, fb)
+                  if (fb !== null) decide(selectedPath, 'reconsider', undefined, fb)
                 }}>Reconsider</button>
-                <button onClick={() => decide(currentDecision.metadata.path || '', 'skip')}>Skip</button>
+                <button onClick={() => decide(selectedPath, 'skip')}>Skip</button>
               </>
             )}
           </div>

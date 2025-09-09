@@ -27,15 +27,8 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
     staged_source: Optional[Path] = None
     staged_target: Optional[Path] = None
 
-    # Frontend is served by Vite in development. In production, serve built assets if present.
-    try:
-        project_root = Path(__file__).resolve().parent.parent
-        dist_dir = project_root / "frontend" / "dist"
-        if dist_dir.exists():
-            app.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="frontend")
-    except Exception:
-        # If anything goes wrong determining the dist path, skip mounting
-        pass
+    # Frontend is served by Vite in development. In production, we will mount the built assets
+    # after declaring API routes so that /api/* is not intercepted by the static mount.
 
     @app.get("/api/status")
     async def status():
@@ -174,6 +167,15 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
                 yield f"data: {json.dumps(data)}\n\n"
                 await asyncio.sleep(1)
         return StreamingResponse(gen(), media_type="text/event-stream")
+
+    # Mount built frontend (production) last so /api/* keeps priority
+    try:
+        project_root = Path(__file__).resolve().parent.parent
+        dist_dir = project_root / "frontend" / "dist"
+        if dist_dir.exists():
+            app.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="frontend")
+    except Exception:
+        pass
 
     return app
 
