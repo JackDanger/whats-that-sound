@@ -1,9 +1,16 @@
-"""Main CLI entry point for whats-that-sound."""
+"""Main CLI entry point for whats-that-sound.
+
+Boot the FastAPI server for the React UI with sensible defaults:
+- Source/target directories can be provided via flags or env (WTS_SOURCE_DIR/WTS_TARGET_DIR)
+- Inference can be provided via --model or --inference-url, env (WTS_MODEL/WTS_INFERENCE_URL),
+  or defaults to a local llama-compatible server at http://localhost:11434/v1
+"""
 
 import click
 from pathlib import Path
 from rich.console import Console
 import os
+import webbrowser
 
 from .organizer import MusicOrganizer
 from .inference import InferenceProvider
@@ -16,30 +23,80 @@ console = Console()
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
     "--source-dir",
-    required=True,
-    type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path),
-    help="Path to the source directory containing unorganized music",
+    required=False,
+    type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
+    help="Source directory containing unorganized music (env: WTS_SOURCE_DIR)",
 )
 @click.option(
     "--target-dir",
-    required=True,
+    required=False,
     type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
-    help="Path to the target directory where organized music will be written",
+    help="Target directory where organized music will be written (env: WTS_TARGET_DIR)",
 )
-@click.option("--model", "-m", help="Model name, e.g. 'gpt-5' or 'gemini-2.5-pro'")
-@click.option("--inference-url", help="HTTP base URL for a llama-server, e.g. http://localhost:11434/v1")
-def main_cli(source_dir: Path, target_dir: Path, model: str | None, inference_url: str | None):
-    """Organize music from SOURCE_DIR into TARGET_DIR using an inference provider.
+@click.option("--model", "-m", help="Model name (env: WTS_MODEL), e.g. 'gpt-5' or 'gemini-2.5-pro'")
+@click.option("--inference-url", help="HTTP base URL for llama-compatible server (env: WTS_INFERENCE_URL), e.g. http://localhost:11434/v1")
+@click.option("--host", default=os.getenv("HOST", "0.0.0.0"), show_default=True, help="Server host")
+@click.option("--port", default=int(os.getenv("PORT", "8000")), show_default=True, help="Server port", type=int)
+@click.option("--open-browser/--no-open-browser", default=True, show_default=True, help="Open browser at startup")
+@click.option("--reload/--no-reload", default=False, show_default=True, help="Auto-reload server (dev)")
+def main_cli(
+    source_dir: Path | None,
+    target_dir: Path | None,
+    model: str | None,
+    inference_url: str | None,
+    host: str,
+    port: int,
+    open_browser: bool,
+    reload: bool,
+):
+    """Serve the web UI with a FastAPI backend.
 
-    Exactly one of --model or --inference-url must be provided.
+    You may specify --model OR --inference-url. If neither is provided, env vars are used,
+    otherwise defaults to a local llama-compatible API at http://localhost:11434/v1.
     """
     try:
-        # Validate args
-        if bool(model) == bool(inference_url):
-            raise click.ClickException("Provide exactly one of --model or --inference-url")
+        project_root = Path(__file__).resolve().parent.parent
+
+        # Resolve directories with env/defaults
+        env_source = os.getenv("WTS_SOURCE_DIR")
+        env_target = os.getenv("WTS_TARGET_DIR")
+
+        if source_dir is None:
+            if env_source:
+                source_dir = Path(env_source)
+            elif (project_root / "tmp-src").exists():
+                source_dir = project_root / "tmp-src"
+            else:
+                source_dir = Path.home() / "Music" / "Unsorted"
+
+        if target_dir is None:
+            if env_target:
+                target_dir = Path(env_target)
+            elif (project_root / "tmp-dst").exists():
+                target_dir = project_root / "tmp-dst"
+            else:
+                target_dir = Path.home() / "Music" / "Organized"
 
         # Create target directory if it doesn't exist
         target_dir.mkdir(parents=True, exist_ok=True)
+        source_dir.mkdir(parents=True, exist_ok=True)
+
+        # Configure inference preference: flag -> env -> default
+        env_model = os.getenv("WTS_MODEL")
+        env_infer = os.getenv("WTS_INFERENCE_URL")
+
+        # If both flags provided, it's invalid
+        if model and inference_url:
+            raise click.ClickException("Provide at most one of --model or --inference-url")
+
+        if not model and not inference_url:
+            # Fall back to env
+            model = env_model if env_model else None
+            inference_url = env_infer if env_infer else None
+
+        if not model and not inference_url:
+            # Final default: local llama-compatible server
+            inference_url = "http://localhost:11434/v1"
 
         # Configure inference
         if inference_url:
@@ -74,7 +131,18 @@ def main_cli(source_dir: Path, target_dir: Path, model: str | None, inference_ur
 
         # Start web server for UI
         app = create_app(organizer)
-        uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
+        url = f"http://{host}:{port}"
+        console.print(f"[green]Starting What's That Sound on {url}[/green]")
+        # If no built frontend found, hint about dev server
+        dist_dir = project_root / "frontend" / "dist"
+        if not dist_dir.exists():
+            console.print("[dim]Tip: run 'npm run dev' in ./frontend for the React dev server (port 5173)[/dim]")
+        if open_browser:
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+        uvicorn.run(app, host=host, port=port, reload=reload)
 
     except click.ClickException:
         raise
