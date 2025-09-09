@@ -79,6 +79,19 @@ class MusicOrganizer:
             None,
         )
 
+    def update_paths(self, source_dir: Path, target_dir: Path) -> None:
+        """Update source/target directories and refresh dependent components without spawning a new worker.
+
+        This keeps the existing worker process and job store, but refreshes path-dependent
+        components and progress tracking for a new session.
+        """
+        self.source_dir = source_dir
+        self.target_dir = target_dir
+        # Refresh components that depend on target/source paths
+        self.file_organizer = FileOrganizer(self.target_dir)
+        # Reset progress tracking for a new run
+        self.progress_tracker = ProgressTracker()
+
     def organize(self):
         """Main organization workflow with background processing."""
         session = OrganizationSession(self)

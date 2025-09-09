@@ -13,6 +13,9 @@ from .organizer import MusicOrganizer
 
 def create_app(organizer: MusicOrganizer) -> FastAPI:
     app = FastAPI(title="What's That Sound API")
+    # Staged (unapplied) path changes
+    staged_source: Optional[Path] = None
+    staged_target: Optional[Path] = None
 
     @app.get("/")
     async def index():
@@ -32,12 +35,44 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
       .title { font-weight: 700; margin-bottom: 6px; }
       button { padding: 6px 10px; margin-right: 6px; }
       pre { white-space: pre-wrap; }
+      .paths { display:flex; gap:12px; align-items:center; }
+      .muted { color: #9bb; font-size: 12px; }
+      #picker { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; }
+      #picker .dialog { background: #fff; color: #000; width: 640px; max-height: 70vh; overflow: auto; border-radius: 6px; padding: 10px; }
+      #picker ul { list-style: none; padding-left: 0; }
+      #picker li { padding: 4px 0; cursor: pointer; }
+      #picker li:hover { background: #f2f6ff; }
     </style>
   </head>
   <body>
     <header>
-      <div id="paths">Loading...</div>
+      <div id="paths">
+        <div class="paths"><b>Source:</b> <span id="curSource">-</span> <button onclick="openPicker('source')">Change</button></div>
+        <div class="paths"><b>Target:</b> <span id="curTarget">-</span> <button onclick="openPicker('target')">Change</button></div>
+        <div id="staged" class="muted"></div>
+        <div id="applyBtns" style="margin-top:6px; display:none;">
+          <button onclick="applyPaths('confirm')">Confirm</button>
+          <button onclick="applyPaths('cancel')">Cancel</button>
+        </div>
+      </div>
     </header>
+    <div id="picker">
+      <div class="dialog">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div style="font-weight:700;">Select directory</div>
+          <div style="flex:1"></div>
+          <button onclick="closePicker()">Close</button>
+        </div>
+        <div style="margin-top:6px;">
+          <div>Current: <span id="pickPath">/</span></div>
+          <div style="margin-top:4px;">
+            <button onclick="goUp()">Up</button>
+            <button onclick="chooseCurrent()">Select this</button>
+          </div>
+          <ul id="pickList" style="margin-top:6px;"></ul>
+        </div>
+      </div>
+    </div>
     <div class="grid">
       <div class="panel">
         <div class="title">Background</div>
@@ -55,9 +90,24 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
     </div>
     <script>
       async function fetchJSON(url, opts) { const r = await fetch(url, opts||{}); if (!r.ok) throw new Error(await r.text()); return await r.json(); }
+      let currentSource = ''; let currentTarget = ''; let stagedSource = ''; let stagedTarget = '';
+      async function refreshPaths(){
+        const p = await fetchJSON('/api/paths');
+        currentSource = p.current.source_dir || '';
+        currentTarget = p.current.target_dir || '';
+        stagedSource = p.staged.source_dir || '';
+        stagedTarget = p.staged.target_dir || '';
+        document.getElementById('curSource').textContent = currentSource;
+        document.getElementById('curTarget').textContent = currentTarget;
+        const staged = [];
+        if (stagedSource) staged.push(`Staged source: ${stagedSource}`);
+        if (stagedTarget) staged.push(`Staged target: ${stagedTarget}`);
+        document.getElementById('staged').textContent = staged.join('  |  ');
+        document.getElementById('applyBtns').style.display = (stagedSource || stagedTarget) ? 'block' : 'none';
+      }
       async function refreshStatus(){
         const s = await fetchJSON('/api/status');
-        document.getElementById('paths').textContent = `Source: ${s.source_dir}  |  Target: ${s.target_dir}`;
+        // Paths are shown via refreshPaths
         document.getElementById('bg').textContent = `Queue: ${s.counts.queued} | Running: ${s.counts.in_progress} | Ready: ${s.counts.completed} | Failed: ${s.counts.failed} | Processed: ${s.processed}/${s.total}`;
         const ul = document.getElementById('ready'); ul.innerHTML = '';
         s.ready.slice(0,10).forEach(item => { const li=document.createElement('li'); li.textContent=item.name; li.onclick=()=>loadDecision(item.path); ul.appendChild(li); });
@@ -86,7 +136,21 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
         es.onmessage = (e)=>{ try{ const s=JSON.parse(e.data); document.getElementById('bg').textContent = `Queue: ${s.counts.queued} | Running: ${s.counts.in_progress} | Ready: ${s.counts.completed} | Failed: ${s.counts.failed} | Processed: ${s.processed}/${s.total}`; }catch{} };
         es.onerror = ()=>{ es.close(); setTimeout(connectSSE,2000); };
       }
-      refreshStatus(); connectSSE();
+      // Directory picker logic
+      let pickWhich = null; let pickCurrent = '/';
+      function openPicker(which){
+        pickWhich = which;
+        const desired = which==='source' ? (stagedSource || currentSource) : (stagedTarget || currentTarget);
+        pickCurrent = desired || '/';
+        document.getElementById('picker').style.display='flex';
+        listDir();
+      }
+      function closePicker(){ document.getElementById('picker').style.display='none'; pickWhich=null; }
+      async function listDir(){ document.getElementById('pickPath').textContent = pickCurrent; const d = await fetchJSON('/api/list?path='+encodeURIComponent(pickCurrent)); const ul=document.getElementById('pickList'); ul.innerHTML=''; if (d.parent){ const li=document.createElement('li'); li.textContent='..'; li.onclick=()=>{ pickCurrent=d.parent; listDir(); }; ul.appendChild(li);} d.entries.forEach(e=>{ const li=document.createElement('li'); li.textContent=e.name+'/'; li.onclick=()=>{ pickCurrent=e.path; listDir(); }; ul.appendChild(li); }); }
+      function goUp(){ const p = document.getElementById('pickPath').textContent; const idx = p.lastIndexOf('/'); if (idx>0){ pickCurrent = p.slice(0,idx); listDir(); } }
+      async function chooseCurrent(){ if (!pickWhich) return; const body = {}; if (pickWhich==='source') body.source_dir = pickCurrent; else body.target_dir = pickCurrent; await fetchJSON('/api/paths', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); await refreshPaths(); closePicker(); }
+      async function applyPaths(action){ await fetchJSON('/api/paths', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action })}); await refreshPaths(); await refreshStatus(); }
+      refreshPaths(); refreshStatus(); connectSSE();
     </script>
   </body>
  </html>
@@ -107,6 +171,73 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
             "total": len(list(organizer.source_dir.iterdir())),
             "ready": [{"path": fp, "name": Path(fp).name} for _, fp, _ in ready],
         }
+
+    @app.get("/api/paths")
+    async def get_paths():
+        return {
+            "current": {"source_dir": str(organizer.source_dir), "target_dir": str(organizer.target_dir)},
+            "staged": {
+                "source_dir": str(staged_source) if staged_source else "",
+                "target_dir": str(staged_target) if staged_target else "",
+            },
+        }
+
+    @app.post("/api/paths")
+    async def post_paths(payload: Dict[str, Any]):
+        nonlocal staged_source, staged_target
+        src = payload.get("source_dir")
+        dst = payload.get("target_dir")
+        action = payload.get("action") or "stage"
+        if action == "stage":
+            if src is not None:
+                staged_source = Path(src)
+            if dst is not None:
+                staged_target = Path(dst)
+            return {"ok": True}
+        if action == "cancel":
+            staged_source = None
+            staged_target = None
+            return {"ok": True}
+        if action == "confirm":
+            new_source = staged_source or organizer.source_dir
+            new_target = staged_target or organizer.target_dir
+            # Apply paths
+            organizer.update_paths(new_source, new_target)
+            # Re-run discovery and prefetch like at start
+            try:
+                folders = []
+                try:
+                    from .organizer import FolderDiscovery  # local import to avoid cycles
+                    fd = FolderDiscovery(organizer.source_dir, organizer.state_manager)
+                    folders = fd.discover() or []
+                except Exception:
+                    folders = []
+                if folders:
+                    try:
+                        organizer._prefetch_proposals(folders)
+                    except Exception:
+                        pass
+            finally:
+                staged_source = None
+                staged_target = None
+            return {"ok": True}
+        raise HTTPException(400, "invalid action")
+
+    @app.get("/api/list")
+    async def list_dirs(path: str):
+        base = Path(path)
+        if not base.exists():
+            raise HTTPException(404, "path not found")
+        if not base.is_dir():
+            raise HTTPException(400, "not a directory")
+        try:
+            entries = []
+            for p in sorted([d for d in base.iterdir() if d.is_dir()]):
+                entries.append({"name": p.name, "path": str(p)})
+            parent = str(base.parent) if base.parent != base else ""
+            return {"entries": entries, "parent": parent}
+        except Exception as e:
+            raise HTTPException(500, str(e))
 
     @app.get("/api/ready")
     async def ready(limit: int = 20):
