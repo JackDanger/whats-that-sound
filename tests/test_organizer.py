@@ -1,4 +1,4 @@
-"""Tests for the refactored MusicOrganizer orchestrator."""
+"""Tests for the MusicOrganizer orchestrator."""
 
 import pytest
 from pathlib import Path
@@ -7,8 +7,8 @@ from unittest.mock import Mock, patch, MagicMock
 from src.organizer import MusicOrganizer
 
 
-class TestMusicOrganizerRefactored:
-    """Test cases for the refactored MusicOrganizer orchestrator."""
+class TestMusicOrganizer:
+    """Test cases for the MusicOrganizer orchestrator."""
 
     @pytest.fixture
     def mock_inference(self):
