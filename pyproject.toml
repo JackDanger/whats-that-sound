@@ -9,6 +9,8 @@ dependencies = [
     "mutagen>=1.47",
     "huggingface-hub>=0.20",
     "prompt-toolkit>=3.0",
+    "fastapi>=0.111",
+    "uvicorn>=0.29",
 ]
 
 [project.optional-dependencies]

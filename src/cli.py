@@ -6,6 +6,8 @@ from rich.console import Console
 
 from .organizer import MusicOrganizer
 from .inference import InferenceProvider
+from .server import create_app
+import uvicorn
 
 console = Console()
 
@@ -72,8 +74,9 @@ def main_cli(source_dir: Path, target_dir: Path, model: str | None, inference_ur
         organizer.structure_classifier.inference = provider
         organizer.proposal_generator.inference = provider
 
-        # Run organization process
-        organizer.organize()
+        # Start web server for UI
+        app = create_app(organizer)
+        uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
 
     except click.ClickException:
         raise
