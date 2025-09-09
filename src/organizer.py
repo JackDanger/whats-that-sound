@@ -84,6 +84,14 @@ class MusicOrganizer:
             if not folders:
                 return
 
+            # Reset any stale in-progress jobs (e.g., after crash/CTRL-C)
+            try:
+                reset = self.jobstore.reset_stale_in_progress()
+                if reset:
+                    console.print(f"[dim]Re-queued {reset} stale jobs from previous run[/dim]")
+            except Exception:
+                pass
+
             # Aggressively prefetch proposals for all discovered folders up-front.
             try:
                 self._prefetch_proposals(folders)
@@ -177,6 +185,9 @@ class MusicOrganizer:
                     if metadata.get("total_files", 0) > 0:
                         # Enqueue to external worker if enabled, else in-process background
                         if self.worker_process is not None:
+                            # Skip if we already have any job recorded for this folder
+                            if self.jobstore.has_any_for_folder(folder):
+                                continue
                             self.jobstore.enqueue(folder, metadata)
                             success = True
                         else:
@@ -201,6 +212,8 @@ class MusicOrganizer:
                         metadata = self.directory_analyzer.extract_folder_metadata(album_folder)
                         if metadata.get("total_files", 0) > 0:
                             if self.worker_process is not None:
+                                if self.jobstore.has_any_for_folder(album_folder):
+                                    continue
                                 self.jobstore.enqueue(album_folder, metadata, artist_hint=folder.name)
                                 success = True
                             else:

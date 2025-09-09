@@ -81,6 +81,16 @@ class SQLiteJobStore:
             )
             return int(cur.lastrowid)
 
+    def has_any_for_folder(self, folder: Path, statuses: Optional[List[str]] = None) -> bool:
+        statuses = statuses or ["queued", "in_progress", "completed"]
+        q_marks = ",".join(["?"] * len(statuses))
+        with self._connect() as conn:
+            row = conn.execute(
+                f"SELECT 1 FROM jobs WHERE folder_path=? AND status IN ({q_marks}) LIMIT 1",
+                (str(folder), *statuses),
+            ).fetchone()
+            return row is not None
+
     def claim_next(self) -> Optional[Job]:
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE;")
@@ -134,6 +144,23 @@ class SQLiteJobStore:
             for status, count in rows:
                 result[status] = count
             return result
+
+    def reset_stale_in_progress(self, max_age_seconds: int = 300) -> int:
+        """Re-queue in_progress jobs that are likely orphaned.
+
+        Returns number of rows updated.
+        """
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                UPDATE jobs
+                SET status='queued', updated_at=CURRENT_TIMESTAMP, started_at=NULL
+                WHERE status='in_progress' AND started_at IS NOT NULL
+                  AND (strftime('%s','now') - strftime('%s', started_at)) > ?
+                """,
+                (max_age_seconds,),
+            )
+            return cur.rowcount or 0
 
     def wait_for_result(self, folder: Path, timeout: float = 10.0, poll_interval: float = 0.25) -> Optional[Dict[str, Any]]:
         deadline = time.time() + timeout
