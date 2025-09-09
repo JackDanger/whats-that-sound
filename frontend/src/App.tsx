@@ -27,6 +27,8 @@ function App() {
   const [selectedPath, setSelectedPath] = useState<string>('')
   const [busyPaths, setBusyPaths] = useState(false)
   const [applyHidden, setApplyHidden] = useState(false)
+  const [readyQueue, setReadyQueue] = useState<{ path: string; name: string }[]>([])
+  const [loadingDecision, setLoadingDecision] = useState(false)
   const pickerOpen = useRef<null | 'source' | 'target'>(null)
   const [pickCurrent, setPickCurrent] = useState<string>('/')
   const [pickList, setPickList] = useState<{ name: string; path: string }[]>([])
@@ -45,16 +47,43 @@ function App() {
   async function refreshStatus() {
     const s = await fetchJSON<Status>('/api/status')
     setStatus(s)
-    if (!currentDecision && s.ready && s.ready.length > 0) {
-      // Auto-load the first ready item to avoid idle "waiting" state
-      loadDecision(s.ready[0].path)
+    setReadyQueue(s.ready || [])
+    if (!currentDecision) {
+      await loadNextReady(s.ready)
     }
   }
 
   async function loadDecision(path: string) {
-    const d = await fetchJSON<any>('/api/folder?path=' + encodeURIComponent(path))
-    setCurrentDecision(d)
-    setSelectedPath(path)
+    try {
+      const d = await fetchJSON<any>('/api/folder?path=' + encodeURIComponent(path))
+      setCurrentDecision(d)
+      setSelectedPath(path)
+      return true
+    } catch (e) {
+      return false
+    }
+  }
+
+  async function loadNextReady(candidates?: { path: string; name: string }[]) {
+    if (loadingDecision) return
+    setLoadingDecision(true)
+    try {
+      const list = candidates ?? readyQueue
+      for (const item of list) {
+        const ok = await loadDecision(item.path)
+        if (ok) return
+      }
+      // fetch fresh list and try once more
+      const fresh = await fetchJSON<{ path: string; name: string }[]>('/api/ready?limit=20')
+      setReadyQueue(fresh)
+      for (const item of fresh) {
+        const ok = await loadDecision(item.path)
+        if (ok) return
+      }
+      setCurrentDecision(null)
+    } finally {
+      setLoadingDecision(false)
+    }
   }
 
   async function decide(path: string, action: 'accept' | 'reconsider' | 'skip', proposal?: any, feedback?: string) {
@@ -63,7 +92,9 @@ function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path, action, proposal, feedback }),
     })
+    setReadyQueue((q) => q.filter((i) => i.path !== path))
     setCurrentDecision(null)
+    await loadNextReady()
     await refreshStatus()
   }
 
@@ -144,7 +175,7 @@ function App() {
   }, [stagedSource, stagedTarget])
 
   return (
-    <div>
+      <div>
       <header style={{ padding: '8px 12px', background: '#101820', color: '#fff' }}>
         <div id="paths">
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 6 }}>
