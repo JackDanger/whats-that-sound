@@ -18,6 +18,7 @@ import threading
 import time
 from rich.panel import Panel
 from pathlib import Path
+from dataclasses import dataclass
 
 console = Console()
 
@@ -327,106 +328,9 @@ class ProcessingPipeline:
         self.folders = folders
 
     def execute(self):
-        """Execute the processing pipeline."""
-        # Pre-analyze first few folders and submit background jobs
-        self.organizer._prefetch_proposals(self.folders)
-
-        # Start a lightweight progress refresher that shows jobstore counts
-        refresher = ProgressRefresher(self.organizer)
-        refresher.start()
-
-        idx = 0
-        total = len(self.folders)
-        pending = list(self.folders)
-        while pending:
-            # Update dashboard
-            try:
-                counts = self.organizer.jobstore.counts()
-                ready_names = [Path(fp).name for _, fp, _ in self.organizer.jobstore.fetch_completed(limit=3)]
-                deciding = pending[0].name if pending else ""
-                self.organizer.ui.render_dashboard(
-                    str(self.organizer.source_dir),
-                    str(self.organizer.target_dir),
-                    counts.get("queued", 0),
-                    counts.get("in_progress", 0),
-                    counts.get("completed", 0),
-                    counts.get("failed", 0),
-                    self.organizer.progress_tracker.get_stats().get("total_processed", 0),
-                    total,
-                    deciding,
-                    ready_names,
-                )
-            except Exception:
-                pass
-
-            # Drain any ready proposals first to present decisions ASAP
-            made_progress = False
-            for folder in list(pending):
-                ready = self.organizer.jobstore.get_result(folder)
-                if not ready:
-                    continue
-                idx += 1
-                self.organizer.ui.display_progress(idx, total, folder.name)
-                # Show quick context for the folder
-                try:
-                    metadata = self.organizer.directory_analyzer.extract_folder_metadata(folder)
-                    self.organizer.ui.display_folder_info(metadata)
-                    self.organizer.ui.display_file_samples(metadata.get("files", []))
-                except Exception:
-                    pass
-                self.organizer.ui.display_llm_proposal(ready)
-                feedback = self.organizer.ui.get_user_feedback(ready)
-                if feedback["action"] == "accept":
-                    self.organizer.state_manager.save_proposal_tracker(folder, feedback["proposal"])
-                    self.organizer.file_organizer.organize_folder(folder, feedback["proposal"])
-                    self.organizer.progress_tracker.increment_processed()
-                    self.organizer.progress_tracker.increment_successful(feedback["proposal"])
-                elif feedback["action"] == "reconsider":
-                    # Re-queue reconsideration job via jobstore
-                    metadata = self.organizer.directory_analyzer.extract_folder_metadata(folder)
-                    self.organizer.jobstore.enqueue(folder, metadata, user_feedback=feedback.get("feedback"))
-                    # Do not advance idx for reconsider; it will be revisited when ready
-                    idx -= 1
-                elif feedback["action"] == "skip":
-                    self.organizer.progress_tracker.increment_processed()
-                    self.organizer.progress_tracker.increment_skipped()
-                elif feedback["action"] == "cancel":
-                    refresher.stop()
-                    return
-                console.print("\n" + "─" * 80 + "\n")
-                pending.remove(folder)
-                made_progress = True
-
-            if made_progress:
-                continue
-
-            # If nothing ready, process the next folder (will analyze, queue, then proceed)
-            folder = pending.pop(0)
-            idx += 1
-            processor = FolderProcessor(self.organizer, folder, idx, total)
-            processor.process()
-
-            # Background management
-            self._manage_background_processing(idx)
-
-        refresher.stop()
-
-    def _manage_background_processing(self, current_idx: int):
-        """Manage background processing for remaining folders."""
-        # Check for source directory changes
-        # Background processor removed; rely on jobstore + worker. Re-analyze if source changes is not needed here.
-        if False:
-            console.print(
-                "[yellow]Source directory changed, re-analyzing remaining folders...[/yellow]"
-            )
-            remaining_folders = self.folders[current_idx:]
-            if remaining_folders:
-                self.organizer._prefetch_proposals(remaining_folders)
-
-        # Pre-submit next folder's job if available
-        if current_idx < len(self.folders):
-            # No-op; worker consumes jobstore
-            pass
+        """Execute the processing pipeline using the presenter for clarity."""
+        presenter = DecisionPresenter(self.organizer, self.folders)
+        presenter.run()
 
 
 class FolderProcessor:
@@ -535,3 +439,100 @@ class ProgressRefresher:
             except Exception:
                 pass
             time.sleep(self.interval)
+
+
+@dataclass
+class PresenterState:
+    total: int
+    processed: int
+    pending: list
+
+
+class DecisionPresenter:
+    """Encapsulates the decision-first loop and dashboard rendering."""
+
+    def __init__(self, organizer: MusicOrganizer, folders: list[Path]):
+        self.organizer = organizer
+        self.state = PresenterState(total=len(folders), processed=0, pending=list(folders))
+
+    def _update_dashboard(self):
+        counts = self.organizer.jobstore.counts()
+        ready_names = [Path(fp).name for _, fp, _ in self.organizer.jobstore.fetch_completed(limit=3)]
+        deciding = self.state.pending[0].name if self.state.pending else ""
+        stats = self.organizer.progress_tracker.get_stats()
+        self.organizer.ui.render_dashboard(
+            str(self.organizer.source_dir),
+            str(self.organizer.target_dir),
+            counts.get("queued", 0),
+            counts.get("in_progress", 0),
+            counts.get("completed", 0),
+            counts.get("failed", 0),
+            stats.get("total_processed", 0),
+            self.state.total,
+            deciding,
+            ready_names,
+        )
+
+    def _present_decision(self, folder: Path, proposal: dict) -> bool:
+        # Show context
+        metadata = self.organizer.directory_analyzer.extract_folder_metadata(folder)
+        self.organizer.ui.display_folder_info(metadata)
+        self.organizer.ui.display_file_samples(metadata.get("files", []))
+        self.organizer.ui.display_llm_proposal(proposal)
+        feedback = self.organizer.ui.get_user_feedback(proposal)
+
+        if feedback["action"] == "accept":
+            self.organizer.state_manager.save_proposal_tracker(folder, feedback["proposal"])
+            self.organizer.file_organizer.organize_folder(folder, feedback["proposal"])
+            self.organizer.progress_tracker.increment_processed()
+            self.organizer.progress_tracker.increment_successful(feedback["proposal"])
+            return True
+        elif feedback["action"] == "reconsider":
+            # Enqueue reconsideration
+            self.organizer.jobstore.enqueue(folder, metadata, user_feedback=feedback.get("feedback"))
+            return False
+        elif feedback["action"] == "skip":
+            self.organizer.progress_tracker.increment_processed()
+            self.organizer.progress_tracker.increment_skipped()
+            return True
+        elif feedback["action"] == "cancel":
+            raise KeyboardInterrupt()
+        return False
+
+    def run(self):
+        # Pre-enqueue everything we can up front
+        self.organizer._prefetch_proposals(self.state.pending)
+
+        refresher = ProgressRefresher(self.organizer)
+        refresher.start()
+        try:
+            while self.state.pending:
+                self._update_dashboard()
+
+                # Drain ready decisions first
+                made_progress = False
+                for folder in list(self.state.pending):
+                    ready = self.organizer.jobstore.get_result(folder)
+                    if not ready:
+                        continue
+                    self.organizer.ui.display_progress(
+                        self.state.total - len(self.state.pending) + 1, self.state.total, folder.name
+                    )
+                    acted = self._present_decision(folder, ready)
+                    if acted:
+                        self.state.pending.remove(folder)
+                    made_progress = True
+                if made_progress:
+                    continue
+
+                # If nothing ready, process the next folder to keep pipeline moving
+                folder = self.state.pending.pop(0)
+                processor = FolderProcessor(
+                    self.organizer,
+                    folder,
+                    self.state.total - len(self.state.pending),
+                    self.state.total,
+                )
+                processor.process()
+        finally:
+            refresher.stop()
