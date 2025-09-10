@@ -104,9 +104,9 @@ class MusicOrganizer:
             if not folders:
                 return
 
-            # Reset any stale in-progress jobs (e.g., after crash/CTRL-C)
+            # Reset any stale analyzing jobs (e.g., after crash/CTRL-C)
             try:
-                reset = self.jobstore.reset_stale_in_progress()
+                reset = self.jobstore.reset_stale_analyzing()
                 if reset:
                     console.print(f"[dim]Re-queued {reset} stale jobs from previous run[/dim]")
             except Exception:
@@ -472,16 +472,16 @@ class DecisionPresenter:
 
     def _update_dashboard(self):
         counts = self.organizer.jobstore.counts()
-        ready_names = [Path(fp).name for _, fp, _ in self.organizer.jobstore.fetch_completed(limit=3)]
+        ready_names = [Path(fp).name for _, fp, _ in self.organizer.jobstore.fetch_approved(limit=3)]
         deciding = self.state.pending[0].name if self.state.pending else ""
         stats = self.organizer.progress_tracker.get_stats()
         self.organizer.ui.render_dashboard(
             str(self.organizer.source_dir),
             str(self.organizer.target_dir),
             counts.get("queued", 0),
-            counts.get("in_progress", 0),
-            counts.get("completed", 0),
-            counts.get("failed", 0),
+            counts.get("analyzing", 0),
+            counts.get("approved", 0),
+            counts.get("skipped", 0),
             stats.get("total_processed", 0),
             self.state.total,
             deciding,

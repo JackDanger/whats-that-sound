@@ -147,8 +147,8 @@ class SQLiteJobStore:
                 result[status] = count
             return result
 
-    def reset_stale_in_progress(self, max_age_seconds: int = 300) -> int:
-        """Re-queue in_progress jobs that are likely orphaned.
+    def reset_stale_analyzing(self, max_age_seconds: int = 300) -> int:
+        """Re-queue analyzing jobs that are likely orphaned.
 
         Returns number of rows updated.
         """
@@ -163,6 +163,10 @@ class SQLiteJobStore:
                 (max_age_seconds,),
             )
             return cur.rowcount or 0
+
+    # Backwards-compat alias
+    def reset_stale_in_progress(self, max_age_seconds: int = 300) -> int:
+        return self.reset_stale_analyzing(max_age_seconds)
 
     def wait_for_result(self, folder: Path, timeout: float = 10.0, poll_interval: float = 0.25) -> Optional[Dict[str, Any]]:
         deadline = time.time() + timeout
