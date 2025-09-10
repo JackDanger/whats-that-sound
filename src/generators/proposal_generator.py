@@ -120,8 +120,8 @@ Heuristic Hints:
 - Album from folder name: {album_from_folder}
 - Year from folder name: {year_from_folder}
 
-Sample Files:
-{file_samples}
+All Files (recursive relative paths):
+{all_files_listing}
 
 User Feedback:
 {user_feedback_section}
@@ -141,14 +141,12 @@ JSON schema:
   "reasoning": "..."
 }}"""
 
-        # Format file samples
-        file_samples = []
-        for f in metadata.get("files", [])[:5]:
-            if "error" not in f:
-                file_samples.append(
-                    f"- {f.get('filename', 'Unknown')}: "
-                    f"{f.get('artist', 'Unknown')} - {f.get('title', 'Unknown')}"
-                )
+        # Full recursive listing (relative paths)
+        all_files_listing = []
+        for f in metadata.get("files", []):
+            rp = f.get("relative_path") or f.get("filename")
+            if rp:
+                all_files_listing.append(f"- {rp}")
 
         # Add user feedback if provided
         user_feedback_section = user_feedback or "(none)"
@@ -168,7 +166,7 @@ JSON schema:
             track_pattern=analysis.get("track_number_pattern", "unknown"),
             album_from_folder=album_from_folder,
             year_from_folder=year_from_folder or "Unknown",
-            file_samples="\n".join(file_samples) or "(none)",
+            all_files_listing="\n".join(all_files_listing) or "(none)",
             user_feedback_section=user_feedback_section,
             artist_hint_section=("\n" + artist_hint_section) if artist_hint_section else "",
         )
