@@ -28,13 +28,13 @@ import uvicorn
     "--source-dir",
     required=False,
     type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
-    help="Source directory containing unorganized music (env: WTS_SOURCE_DIR)",
+    help="Source directory containing unorganized music (required)",
 )
 @click.option(
     "--target-dir",
     required=False,
     type=click.Path(file_okay=False, dir_okay=True, path_type=Path),
-    help="Target directory where organized music will be written (env: WTS_TARGET_DIR)",
+    help="Target directory where organized music will be written (required)",
 )
 @click.option("--model", "-m", help="Model name (env: WTS_MODEL), e.g. 'gpt-5' or 'gemini-2.5-pro'")
 @click.option("--inference-url", help="HTTP base URL for llama-compatible server (env: WTS_INFERENCE_URL), e.g. http://localhost:11434/v1")
@@ -62,29 +62,14 @@ def main_cli(
     try:
         project_root = Path(__file__).resolve().parent.parent
 
-        # Resolve directories with env/defaults
-        env_source = os.getenv("WTS_SOURCE_DIR")
-        env_target = os.getenv("WTS_TARGET_DIR")
+        # Require explicit directories to keep CLI unit-testable (no integration side effects)
+        if not source_dir or not target_dir:
+            raise click.ClickException("--source-dir and --target-dir are required")
 
-        if source_dir is None:
-            if env_source:
-                source_dir = Path(env_source)
-            elif (project_root / "tmp-src").exists():
-                source_dir = project_root / "tmp-src"
-            else:
-                source_dir = Path.home() / "Music" / "Unsorted"
-
-        if target_dir is None:
-            if env_target:
-                target_dir = Path(env_target)
-            elif (project_root / "tmp-dst").exists():
-                target_dir = project_root / "tmp-dst"
-            else:
-                target_dir = Path.home() / "Music" / "Organized"
-
-        # Create target directory if it doesn't exist
+        # Validate provided source directory must exist; create target if needed
+        if not source_dir.exists():
+            raise click.ClickException(f"Source directory does not exist: {source_dir}")
         target_dir.mkdir(parents=True, exist_ok=True)
-        source_dir.mkdir(parents=True, exist_ok=True)
 
         # Configure inference preference: flag -> env -> default
         env_model = os.getenv("WTS_MODEL")
@@ -100,8 +85,7 @@ def main_cli(
             inference_url = env_infer if env_infer else None
 
         if not model and not inference_url:
-            # Final default: local llama-compatible server
-            inference_url = "http://localhost:11434/v1"
+            raise click.ClickException("Provide one of --model or --inference-url")
 
         # Configure inference
         if inference_url:

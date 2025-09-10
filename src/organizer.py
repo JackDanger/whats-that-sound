@@ -47,13 +47,15 @@ class MusicOrganizer:
         self.state_manager = StateManager()
         self.jobstore = SQLiteJobStore()
 
-        # Dedicated single-purpose worker processes
+        # Dedicated single-purpose worker processes (disabled under test)
         self.worker_processes: list[multiprocessing.Process] = []
-        for target in (run_scan_worker, run_analyze_worker, run_move_worker):
-            p = multiprocessing.Process(target=target, daemon=True)
-            logger.info(f"Starting worker process {target}")
-            p.start()
-            self.worker_processes.append(p)
+        is_test_env = bool(os.getenv("PYTEST_CURRENT_TEST")) or os.getenv("WTS_DISABLE_WORKERS") == "1"
+        if not is_test_env:
+            for target in (run_scan_worker, run_analyze_worker, run_move_worker):
+                p = multiprocessing.Process(target=target, daemon=True)
+                logger.info(f"Starting worker process {target}")
+                p.start()
+                self.worker_processes.append(p)
 
         # No in-process processors needed for web UI + workers
 

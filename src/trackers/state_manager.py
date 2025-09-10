@@ -5,14 +5,14 @@ from pathlib import Path
 from typing import Dict, List
 
 
+logger = logging.getLogger("wts.state_manager")
+
 class StateManager:
     """Manages organization state and tracker files."""
 
     def __init__(self):
         """Initialize the state manager."""
         pass
-
-    logger = logging.getLogger("wts.state_manager")
 
 
     def is_already_organized(self, folder: Path) -> bool:
