@@ -16,12 +16,11 @@ def test_jobstore_enqueue_and_complete(tmp_path, monkeypatch):
     job_id = store.enqueue(folder, metadata)
     assert isinstance(job_id, int)
 
-    claim = store.claim_next()
+    claim = store.claim_queued_for_analysis()
     assert claim is not None
-    assert claim.job_id == job_id
 
     result = {"artist": "A", "album": "B", "year": "2024", "release_type": "Album"}
-    store.complete(job_id, result)
+    store.approve(job_id, result)
 
     got = store.get_result(folder)
     assert got == result

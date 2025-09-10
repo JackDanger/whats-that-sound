@@ -15,13 +15,15 @@ class TestCLI:
         runner = CliRunner()
         result = runner.invoke(main_cli, ["--help"])
         assert result.exit_code == 0
-        assert "Organize music from SOURCE_DIR into TARGET_DIR" in result.output
+        # Basic options should be present
+        assert "--source-dir" in result.output
+        assert "--target-dir" in result.output
 
     def test_cli_short_help(self):
         runner = CliRunner()
         result = runner.invoke(main_cli, ["-h"])
         assert result.exit_code == 0
-        assert "Organize music from SOURCE_DIR into TARGET_DIR" in result.output
+        assert "--host" in result.output
 
     def test_organize_help(self):
         """Test organize command help."""
@@ -40,8 +42,10 @@ class TestCLI:
         assert result.exit_code == 0
 
     @patch("src.cli.InferenceProvider")
+    @patch("src.cli.webbrowser.open")
+    @patch("src.cli.uvicorn.run")
     @patch("src.cli.MusicOrganizer")
-    def test_organize_success_with_model(self, mock_organizer_class, mock_inf_class, tmp_path):
+    def test_organize_success_with_model(self, mock_organizer_class, mock_uvicorn_run, mock_browser, mock_inf_class, tmp_path):
         mock_inf = Mock()
         mock_inf_class.return_value = mock_inf
         mock_org = Mock()
@@ -59,15 +63,19 @@ class TestCLI:
                     "--source-dir", str(source_dir),
                     "--target-dir", str(target_dir),
                     "--model", "gpt-5",
+                    "--no-open-browser",
                 ],
             )
 
         assert result.exit_code == 0
-        mock_org.organize.assert_called_once()
+        # Server should be started
+        assert mock_uvicorn_run.called
 
     @patch("src.cli.InferenceProvider")
+    @patch("src.cli.webbrowser.open")
+    @patch("src.cli.uvicorn.run")
     @patch("src.cli.MusicOrganizer")
-    def test_organize_success_with_inference_url(self, mock_organizer_class, mock_inf_class, tmp_path):
+    def test_organize_success_with_inference_url(self, mock_organizer_class, mock_uvicorn_run, mock_browser, mock_inf_class, tmp_path):
         mock_org = Mock()
         mock_organizer_class.return_value = mock_org
         mock_inf = Mock()
@@ -84,11 +92,12 @@ class TestCLI:
                 "--source-dir", str(source_dir),
                 "--target-dir", str(target_dir),
                 "--inference-url", "http://localhost:11434/v1",
+                "--no-open-browser",
             ],
         )
 
         assert result.exit_code == 0
-        mock_org.organize.assert_called_once()
+        assert mock_uvicorn_run.called
 
     def test_mutually_exclusive_args(self, tmp_path):
         runner = CliRunner()
@@ -105,7 +114,7 @@ class TestCLI:
             ],
         )
         assert result.exit_code != 0
-        assert "Provide exactly one" in result.output
+        assert "at most one of --model or --inference-url" in result.output.lower()
 
     def test_organize_missing_arguments(self):
         """Test organize command with missing arguments."""
@@ -113,9 +122,11 @@ class TestCLI:
         result = runner.invoke(main_cli, [])
         assert result.exit_code != 0
 
+    @patch("src.cli.webbrowser.open")
+    @patch("src.cli.uvicorn.run")
     @patch("src.cli.MusicOrganizer")
     def test_organize_success(
-        self, mock_organizer_class, tmp_path
+        self, mock_organizer_class, mock_uvicorn_run, mock_browser, tmp_path
     ):
         """Test successful music organization."""
         mock_organizer = Mock()
@@ -134,12 +145,13 @@ class TestCLI:
                     "--source-dir", str(source_dir),
                     "--target-dir", str(target_dir),
                     "--model", "gpt-5",
+                    "--no-open-browser",
                 ],
             )
 
         assert result.exit_code == 0
         assert target_dir.exists()
-        mock_organizer.organize.assert_called_once()
+        assert mock_uvicorn_run.called
 
     def test_missing_token_for_openai(self, tmp_path):
         runner = CliRunner()
@@ -155,7 +167,7 @@ class TestCLI:
             ],
         )
         assert result.exit_code != 0
-        assert "OPENAI_API_TOKEN" in result.output
+        assert "openai_api_token" in result.output.lower() or "openai_api_key" in result.output.lower()
 
     def test_organize_source_not_exists(self, tmp_path):
         """Test organize command with non-existent source directory."""

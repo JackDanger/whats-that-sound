@@ -139,7 +139,10 @@ def main_cli(
         # If no built frontend found, hint about dev server
         dist_dir = project_root / "frontend" / "dist"
         if not dist_dir.exists():
-            console.print("[dim]Tip: run 'npm run dev' in ./frontend for the React dev server (port 5173)[/dim]")
+            print("Tip: run 'npm run dev' in ./frontend for the React dev server (port 5173)")
+        # Honor env override to disable browser in CI/tests
+        if os.getenv("WTS_NO_BROWSER"):
+            open_browser = False
         if open_browser:
             try:
                 webbrowser.open(url)
@@ -201,6 +204,8 @@ def main_cli(
                         processes.append(subprocess.Popen(vite_cmd, cwd=str(frontend_dir), env=env, stdout=vite_log, stderr=vite_log))
 
                 # Open browser once
+                if os.getenv("WTS_NO_BROWSER"):
+                    open_browser = False
                 if open_browser:
                     try:
                         webbrowser.open(url)

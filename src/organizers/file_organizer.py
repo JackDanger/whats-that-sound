@@ -3,8 +3,10 @@
 import shutil
 from pathlib import Path
 from typing import Dict
-
+import logging
 from ..metadata import MetadataExtractor
+
+logger = logging.getLogger("wts.file_organizer")
 
 
 class FileOrganizer:
@@ -51,7 +53,7 @@ class FileOrganizer:
                     shutil.copy2(file_path, target_path)
                     copied += 1
                 except Exception as e:
-
+                    logger.error(f"Error copying {file_path.name}: {e}")
         logger.info(
             f"Organized {copied} files to: {album_dir.relative_to(self.target_dir)}"
         )

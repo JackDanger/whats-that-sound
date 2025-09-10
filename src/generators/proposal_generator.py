@@ -63,7 +63,7 @@ class ProposalGenerator:
                 return proposal
 
             # If JSON parsing failed, use fallback logic
-            console.print("[yellow]Falling back to metadata-based proposal[/yellow]")
+            self._logger.warning("Falling back to metadata-based proposal")
             return self._fallback_proposal(metadata, artist_hint, folder_path)
 
         except Exception as e:

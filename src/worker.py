@@ -16,6 +16,7 @@ from typing import Optional
 from .jobs import SQLiteJobStore
 from .generators.proposal_generator import ProposalGenerator
 from .inference import InferenceProvider
+from .analyzers import DirectoryAnalyzer, StructureClassifier
 import logging
 import os
 
@@ -71,6 +72,8 @@ def run_analyze_worker(poll_seconds: int = 10):
         logging.basicConfig(level=logging.INFO, handlers=[handler])
     provider = InferenceProvider()
     generator = ProposalGenerator(provider)
+    analyzer = DirectoryAnalyzer()
+    classifier = StructureClassifier(provider)
     while True:
         claimed = jobstore.claim_queued_for_analysis()
         if not claimed:
@@ -78,9 +81,35 @@ def run_analyze_worker(poll_seconds: int = 10):
             continue
         try:
             import json
-            metadata = json.loads(claimed.metadata_json)
-            result = generator.get_llm_proposal(folder_path=claimed.folder_path, metadata=metadata, user_feedback=claimed.user_feedback, artist_hint=claimed.artist_hint)
-            jobstore.approve(claimed.job_id, result)
+            # Always re-analyze and classify for safety
+            from pathlib import Path as _P
+            folder_path = _P(claimed.folder_path)
+            structure = analyzer.analyze_directory_structure(folder_path)
+            classification = classifier.classify_directory_structure(structure)
+            if classification == "artist_collection":
+                # Fan out: enqueue each album subdir with artist hint, then skip this job
+                for sub in structure.get("subdirectories", []):
+                    album_dir = folder_path / sub.get("name", "")
+                    if not album_dir.is_dir():
+                        continue
+                    if jobstore.has_any_for_folder(album_dir):
+                        continue
+                    album_meta = analyzer.extract_folder_metadata(album_dir)
+                    if album_meta.get("total_files", 0) > 0:
+                        jobstore.enqueue(album_dir, album_meta, artist_hint=folder_path.name, job_type="analyze")
+                jobstore.update_latest_status_for_folder(folder_path, ["analyzing"], "skipped")
+                continue
+            elif classification in ("single_album", "multi_disc_album"):
+                # Proceed to proposal generation
+                metadata = analyzer.extract_folder_metadata(folder_path)
+                if metadata.get("total_files", 0) == 0:
+                    jobstore.update_latest_status_for_folder(folder_path, ["analyzing"], "skipped")
+                    continue
+                result = generator.get_llm_proposal(metadata, user_feedback=claimed.user_feedback, artist_hint=claimed.artist_hint, folder_path=str(folder_path))
+                jobstore.approve(claimed.job_id, result)
+            else:
+                # Unknown classification; skip to avoid bad proposals
+                jobstore.update_latest_status_for_folder(folder_path, ["analyzing"], "skipped")
         except Exception as e:
             jobstore.fail(claimed.job_id, str(e))
 

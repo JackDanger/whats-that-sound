@@ -58,7 +58,7 @@ class TestProposalGeneratorIntegration:
             },
         }
 
-        proposal = generator.get_llm_proposal(metadata)
+        proposal = generator.get_llm_proposal(folder_path="test_folder", metadata=metadata)
 
         # Verify the proposal
         assert proposal["artist"] == "The Beatles"
@@ -73,8 +73,8 @@ class TestProposalGeneratorIntegration:
         call_args, _ = mock_inference.generate.call_args
         prompt = call_args[0]
 
-        # Check that prompt contains metadata
-        assert "The Beatles - Abbey Road (1969)" in prompt
+        # Check that prompt contains folder information (we use provided folder_path)
+        assert "Folder Name: test_folder" in prompt
         assert "Come Together" in prompt
         assert "Something" in prompt
         assert "Maxwell's Silver Hammer" in prompt
@@ -107,7 +107,7 @@ class TestProposalGeneratorIntegration:
             },
         }
 
-        proposal = generator.get_llm_proposal(metadata, artist_hint="Led Zeppelin")
+        proposal = generator.get_llm_proposal(folder_path="test_folder", metadata=metadata, artist_hint="Led Zeppelin")
 
         # Verify the proposal uses the artist hint
         assert proposal["artist"] == "Led Zeppelin"
@@ -150,7 +150,7 @@ class TestProposalGeneratorIntegration:
         }
 
         user_feedback = "This is actually The Dark Side of the Moon from 1973"
-        proposal = generator.get_llm_proposal(metadata, user_feedback=user_feedback)
+        proposal = generator.get_llm_proposal(folder_path="test_folder", metadata=metadata, user_feedback=user_feedback)
 
         # Verify the proposal incorporates feedback
         assert proposal["artist"] == "Pink Floyd"
@@ -180,7 +180,7 @@ class TestProposalGeneratorIntegration:
             },
         }
 
-        proposal = generator.get_llm_proposal(metadata)
+        proposal = generator.get_llm_proposal(folder_path="test_folder", metadata=metadata)
 
         # Should use fallback logic that prioritizes metadata analysis
         assert proposal["artist"] == "The Beatles"  # From analysis.common_artist
@@ -207,7 +207,7 @@ class TestProposalGeneratorIntegration:
             },
         }
 
-        proposal = generator.get_llm_proposal(metadata)
+        proposal = generator.get_llm_proposal(folder_path="test_folder", metadata=metadata)
 
         # Should return fallback proposal
         assert proposal["artist"] == "Test Artist"
@@ -233,7 +233,7 @@ class TestProposalGeneratorIntegration:
             },
         }
 
-        proposal = generator.get_llm_proposal(metadata, artist_hint="Hinted Artist")
+        proposal = generator.get_llm_proposal(folder_path="test_folder", metadata=metadata, artist_hint="Hinted Artist")
 
         # Should use artist hint in fallback
         assert proposal["artist"] == "Hinted Artist"
@@ -274,7 +274,7 @@ class TestProposalGeneratorIntegration:
             },
         }
 
-        proposal = generator.get_llm_proposal(metadata)
+        proposal = generator.get_llm_proposal(folder_path="test_folder", metadata=metadata)
 
         # Should detect compilation
         assert proposal["artist"] == "Various Artists"
@@ -308,7 +308,7 @@ class TestProposalGeneratorIntegration:
         }
 
         generator.get_llm_proposal(
-            metadata, user_feedback="Test feedback", artist_hint="Test hint"
+            folder_path="test_folder", metadata=metadata, user_feedback="Test feedback", artist_hint="Test hint"
         )
 
         # Verify prompt contains all expected elements
@@ -322,10 +322,10 @@ class TestProposalGeneratorIntegration:
         assert ("Various Artists" in prompt) or ("Test hint" in prompt)
         assert "2023" in prompt
 
-        # Check file samples
+        # Check full recursive listing contains filenames (no per-track artist/title required)
         assert "track1.mp3" in prompt
-        assert "Artist1" in prompt
-        assert "Title1" in prompt
+        assert "track2.mp3" in prompt
+        assert "track3.mp3" in prompt
 
         # Check user feedback included
         assert "Test feedback" in prompt
