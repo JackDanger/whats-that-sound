@@ -315,7 +315,7 @@ function App() {
       </div>
 
       {showDebug && (
-        <div style={{ position: 'fixed', right: 12, bottom: 12, width: 420, maxHeight: '50vh', overflow: 'auto', background: '#fff', color: '#000', border: '1px solid #ccc', borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.2)', padding: 10, zIndex: 9999 }}>
+        <div style={{ position: 'fixed', right: 12, bottom: 12, width: 420, maxHeight: '50vh', overflow: 'auto', background: '#fff', color: '#000', border: '1px solid #ccc', borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.2)', padding: 10, zIndex: 9999, textAlign: 'left' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ fontWeight: 700 }}>Debug Jobs</div>
             <div style={{ flex: 1 }} />
@@ -326,13 +326,20 @@ function App() {
               <div style={{ fontSize: 12, color: '#666', margin: '6px 0' }}>
                 queued: {debugJobs.counts["queued"]||0} | analyzing: {debugJobs.counts["analyzing"]||0} | ready: {debugJobs.counts["ready"]||0} | accepted: {debugJobs.counts["accepted"]||0} | moving: {debugJobs.counts["moving"]||0} | skipped: {debugJobs.counts["skipped"]||0} | error: {debugJobs.counts["error"]||0} | completed: {debugJobs.counts["completed"]||0}
               </div>
-              <ul style={{ maxHeight: 260, overflow: 'auto', margin: 0, paddingLeft: 16 }}>
-                {debugJobs.recent.map((j) => (
-                  <li key={j.id} style={{ fontSize: 12, marginBottom: 2 }}>
-                    [{j.status}] {j.folder_path} ({j.job_type})
-                  </li>
-                ))}
-              </ul>
+              <pre style={{
+                maxHeight: 260,
+                overflow: 'auto',
+                margin: 0,
+                padding: 8,
+                background: '#0b0d0e',
+                color: '#d1e0e0',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                fontSize: 12,
+                borderRadius: 4,
+                textAlign: 'left'
+              }}>
+{debugJobs.recent.map((j) => `[${j.status}] ${j.folder_path} (${j.job_type})${j.error ? `\n  error: ${j.error}` : ''}`).join('\n')}
+              </pre>
             </div>
           ) : (
             <div style={{ fontSize: 12, color: '#999' }}>No data</div>

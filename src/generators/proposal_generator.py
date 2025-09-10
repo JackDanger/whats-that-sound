@@ -2,6 +2,7 @@
 
 import json
 import re
+from pathlib import Path
 from typing import Dict, Optional
 from src.inference import InferenceProvider
 from rich.console import Console
@@ -32,6 +33,7 @@ class ProposalGenerator:
         metadata: Dict,
         user_feedback: Optional[str] = None,
         artist_hint: Optional[str] = None,
+        folder_path: Optional[str] = None,
     ) -> Dict:
         """Get organization proposal from the LLM.
 
@@ -45,8 +47,8 @@ class ProposalGenerator:
         """
         # Quiet terminal; logs capture details
 
-        # Build prompt
-        prompt = self._build_prompt(metadata, user_feedback, artist_hint)
+        # Build prompt (folder_path optional for backward compatibility)
+        prompt = self._build_prompt(metadata, user_feedback, artist_hint, folder_path)
         self._logger.debug("PROMPT BEGIN\n%s\nPROMPT END", prompt)
 
         # Get LLM response
@@ -64,18 +66,19 @@ class ProposalGenerator:
 
             # If JSON parsing failed, use fallback logic
             console.print("[yellow]Falling back to metadata-based proposal[/yellow]")
-            return self._fallback_proposal(metadata, artist_hint)
+            return self._fallback_proposal(metadata, artist_hint, folder_path)
 
         except Exception as e:
             self._logger.error("INFERENCE ERROR: %s", e)
             # Return a basic proposal based on metadata analysis
-            return self._fallback_proposal(metadata, artist_hint)
+            return self._fallback_proposal(metadata, artist_hint, folder_path)
 
     def _build_prompt(
         self,
         metadata: Dict,
         user_feedback: Optional[str] = None,
         artist_hint: Optional[str] = None,
+        folder_path: Optional[str] = None,
     ) -> str:
         """Build prompt for the LLM.
 
@@ -87,6 +90,9 @@ class ProposalGenerator:
         Returns:
             Formatted prompt string
         """
+        folder_name = (
+            Path(folder_path).name if folder_path else metadata.get("folder_name", "Unknown")
+        )
         analysis = metadata.get("analysis", {})
 
         # Heuristic parsing from folder name like "YYYY - Album Title"
@@ -96,7 +102,6 @@ class ProposalGenerator:
                 return m.group("album").strip(), m.group("year").strip()
             return name.strip(), None
 
-        folder_name = metadata.get("folder_name", "Unknown")
         album_from_folder, year_from_folder = _parse_from_folder(folder_name)
 
         # Compose best-guess values, prioritizing explicit analysis, then folder hints
@@ -203,7 +208,7 @@ JSON schema:
         return None
 
     def _fallback_proposal(
-        self, metadata: Dict, artist_hint: Optional[str] = None
+        self, metadata: Dict, artist_hint: Optional[str] = None, folder_path: Optional[str] = None
     ) -> Dict:
         """Create a fallback proposal when LLM fails.
 
@@ -215,11 +220,17 @@ JSON schema:
             Dictionary containing fallback proposal
         """
         analysis = metadata.get("analysis", {})
-        folder_name = metadata.get("folder_name", "Unknown")
+        folder_name = (
+            Path(folder_path).name if folder_path else metadata.get("folder_name", "Unknown")
+        )
         m = _re.match(r"^(?P<year>\d{4})\s*-\s*(?P<album>.+)$", folder_name)
         album_from_folder = m.group("album").strip() if m else folder_name
         year_from_folder = m.group("year").strip() if m else None
 
+        base_context = f"Folder: {folder_path}\n"
+        if artist_hint:
+            base_context += f"Artist hint: {artist_hint}\n"
+        self._logger.debug("CONTEXT\n%s\nEND CONTEXT", base_context)
         return {
             "artist": artist_hint
             or analysis.get(

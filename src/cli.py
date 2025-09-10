@@ -154,6 +154,10 @@ def main_cli(
         if reload or vite_dev:
             # Orchestrate child processes: uvicorn (reload) and optional vite dev
             env = os.environ.copy()
+            # Direct all logs to files under project_root/logs
+            logs_dir = project_root / "logs"
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            env["WTS_LOG_DIR"] = str(logs_dir)
             env["WTS_SOURCE_DIR"] = str(source_dir)
             env["WTS_TARGET_DIR"] = str(target_dir)
             env["WTS_DEV"] = "1"
@@ -182,7 +186,9 @@ def main_cli(
                     "--timeout-keep-alive",
                     "5",
                 ]
-                processes.append(subprocess.Popen(uvicorn_cmd, env=env))
+                # Write uvicorn output to file as well
+                uvicorn_log = open(logs_dir / "uvicorn.log", "a", buffering=1)
+                processes.append(subprocess.Popen(uvicorn_cmd, env=env, stdout=uvicorn_log, stderr=uvicorn_log))
 
                 # Optionally start Vite dev server
                 if vite_dev:
@@ -192,7 +198,8 @@ def main_cli(
                     else:
                         frontend_dir = project_root / "frontend"
                         vite_cmd = [npm, "run", "dev"]
-                        processes.append(subprocess.Popen(vite_cmd, cwd=str(frontend_dir), env=env))
+                        vite_log = open(logs_dir / "vite.log", "a", buffering=1)
+                        processes.append(subprocess.Popen(vite_cmd, cwd=str(frontend_dir), env=env, stdout=vite_log, stderr=vite_log))
 
                 # Open browser once
                 if open_browser:

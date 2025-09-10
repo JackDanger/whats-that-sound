@@ -16,6 +16,8 @@ from typing import Optional
 from .jobs import SQLiteJobStore
 from .generators.proposal_generator import ProposalGenerator
 from .inference import InferenceProvider
+import logging
+import os
 
 
 def _process_one(jobstore: SQLiteJobStore, generator: ProposalGenerator, job_id: int, folder_path: str, metadata_json: str, user_feedback: Optional[str], artist_hint: Optional[str], job_type: str):
@@ -36,7 +38,7 @@ def _process_one(jobstore: SQLiteJobStore, generator: ProposalGenerator, job_id:
             # Mark scan job as completed
             jobstore.update_latest_status_for_folder(base, ["analyzing"], "completed")
         else:
-            result = generator.get_llm_proposal(metadata, user_feedback=user_feedback, artist_hint=artist_hint)
+            result = generator.get_llm_proposal(folder_path=folder_path, metadata=metadata, user_feedback=user_feedback, artist_hint=artist_hint)
             # Mark job as ready (formerly 'approved')
             jobstore.approve(job_id, result)
     except Exception as e:
@@ -62,6 +64,11 @@ def run_scan_worker(poll_seconds: int = 300):
 
 def run_analyze_worker(poll_seconds: int = 10):
     jobstore = SQLiteJobStore()
+    # File logging for worker
+    log_dir = os.getenv("WTS_LOG_DIR")
+    if log_dir:
+        handler = logging.FileHandler(os.path.join(log_dir, "analyze_worker.log"), encoding="utf-8")
+        logging.basicConfig(level=logging.INFO, handlers=[handler])
     provider = InferenceProvider()
     generator = ProposalGenerator(provider)
     while True:
@@ -72,7 +79,7 @@ def run_analyze_worker(poll_seconds: int = 10):
         try:
             import json
             metadata = json.loads(claimed.metadata_json)
-            result = generator.get_llm_proposal(metadata, user_feedback=claimed.user_feedback, artist_hint=claimed.artist_hint)
+            result = generator.get_llm_proposal(folder_path=claimed.folder_path, metadata=metadata, user_feedback=claimed.user_feedback, artist_hint=claimed.artist_hint)
             jobstore.approve(claimed.job_id, result)
         except Exception as e:
             jobstore.fail(claimed.job_id, str(e))
