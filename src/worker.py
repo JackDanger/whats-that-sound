@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 from .jobs import SQLiteJobStore
@@ -29,15 +29,10 @@ def _process_one(jobstore: SQLiteJobStore, generator: ProposalGenerator, job_id:
             from pathlib import Path as _P
             base = _P(folder_path)
             for d in sorted([p for p in base.iterdir() if p.is_dir()]):
-                marker = d / ".whats-that-sound"
-                if marker.exists():
+                if jobstore.has_any_for_folder(d):
                     continue
                 # Minimal metadata; downstream analyzer will compute full metadata
                 jobstore.enqueue(d, {"folder_name": d.name}, job_type="analyze")
-                try:
-                    marker.write_text("enqueued\n", encoding="utf-8")
-                except Exception:
-                    pass
             # Mark scan job as completed
             jobstore.update_latest_status_for_folder(base, ["analyzing"], "completed")
         else:
@@ -49,45 +44,65 @@ def _process_one(jobstore: SQLiteJobStore, generator: ProposalGenerator, job_id:
         raise e
 
 
-def run_worker(max_workers: Optional[int] = None):
+def run_scan_worker(poll_seconds: int = 300):
     jobstore = SQLiteJobStore()
-    # Configure inference provider using environment
+    while True:
+        from pathlib import Path as _P
+        # Enqueue analyze jobs for subdirectories if missing
+        # Determine root from env (used by server startup), fallback to CWD
+        root = os.getenv("WTS_SOURCE_DIR")
+        if root:
+            base = _P(root)
+            for d in sorted([p for p in base.iterdir() if p.is_dir()]):
+                if jobstore.has_any_for_folder(d):
+                    continue
+                jobstore.enqueue(d, {"folder_name": d.name}, job_type="analyze")
+        time.sleep(poll_seconds)
+
+
+def run_analyze_worker(poll_seconds: int = 10):
+    jobstore = SQLiteJobStore()
     provider = InferenceProvider()
     generator = ProposalGenerator(provider)
+    while True:
+        claimed = jobstore.claim_queued_for_analysis()
+        if not claimed:
+            time.sleep(poll_seconds)
+            continue
+        try:
+            import json
+            metadata = json.loads(claimed.metadata_json)
+            result = generator.get_llm_proposal(metadata, user_feedback=claimed.user_feedback, artist_hint=claimed.artist_hint)
+            jobstore.approve(claimed.job_id, result)
+        except Exception as e:
+            jobstore.fail(claimed.job_id, str(e))
 
-    max_workers = max_workers or int(os.getenv("WTS_WORKER_THREADS", "4"))
 
-    with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = set()
-        while True:
-            # Reap completed
-            done = {f for f in futures if f.done()}
-            futures -= done
-
-            # Claim and submit new jobs up to capacity
-            while len(futures) < max_workers:
-                claimed = jobstore.claim_next()
-                if not claimed:
-                    break
-                f = pool.submit(
-                    _process_one,
-                    jobstore,
-                    generator,
-                    claimed.job_id,
-                    claimed.folder_path,
-                    claimed.metadata_json,
-                    claimed.user_feedback,
-                    claimed.artist_hint,
-                    claimed.job_type,
-                )
-                futures.add(f)
-
-            # Idle if nothing to do
-            if not futures and not claimed:
-                time.sleep(0.5)
+def run_move_worker(poll_seconds: int = 10):
+    jobstore = SQLiteJobStore()
+    from pathlib import Path as _P
+    from .organizers import FileOrganizer as _FO
+    # Target root from env
+    target_dir = os.getenv("WTS_TARGET_DIR")
+    organizer = _FO(_P(target_dir) if target_dir else _P.cwd())
+    while True:
+        claimed = jobstore.claim_accepted_for_move()
+        if not claimed:
+            time.sleep(poll_seconds)
+            continue
+        try:
+            import json
+            metadata = json.loads(claimed.metadata_json)
+            # Expect proposal in metadata for move step
+            proposal = metadata.get("proposal") or {}
+            organizer.organize_folder(_P(claimed.folder_path), proposal)
+            jobstore.update_latest_status_for_folder(_P(claimed.folder_path), ["moving"], "completed")
+        except Exception as e:
+            jobstore.update_latest_status_for_folder(_P(claimed.folder_path), ["moving"], "error")
 
 
 if __name__ == "__main__":
-    run_worker()
+    # For manual debugging, run analyze worker
+    run_analyze_worker()
 
 

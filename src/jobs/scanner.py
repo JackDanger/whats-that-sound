@@ -1,8 +1,6 @@
 from pathlib import Path
-from typing import Iterable
 
-from . import models
-from .jobs import SQLiteJobStore  # type: ignore circular for type-checkers
+from . import SQLiteJobStore  # type: ignore circular import
 
 
 def enqueue_scan_jobs(jobstore: SQLiteJobStore, root: Path) -> None:
@@ -11,18 +9,13 @@ def enqueue_scan_jobs(jobstore: SQLiteJobStore, root: Path) -> None:
 
 
 def perform_scan(jobstore: SQLiteJobStore, base: Path) -> None:
-    """Walk immediate subdirectories of base and enqueue analyze jobs if not marked.
+    """Walk immediate subdirectories of base and enqueue analyze jobs when absent.
 
-    Writes a ".whats-that-sound" marker in each enqueued directory to avoid duplicates.
+    Uses the job store to check if any job already exists for the folder to prevent duplicates.
     """
     for d in sorted([p for p in base.iterdir() if p.is_dir()]):
-        marker = d / ".whats-that-sound"
-        if marker.exists():
+        if jobstore.has_any_for_folder(d):
             continue
         jobstore.enqueue(d, {"folder_name": d.name}, job_type="analyze")
-        try:
-            marker.write_text("enqueued\n", encoding="utf-8")
-        except Exception:
-            pass
 
 

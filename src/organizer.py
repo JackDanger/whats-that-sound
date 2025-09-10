@@ -13,7 +13,7 @@ from .ui import InteractiveUI
 from .jobs import SQLiteJobStore
 import multiprocessing
 import os
-from .worker import run_worker
+from .worker import run_scan_worker, run_analyze_worker, run_move_worker
 import threading
 import time
 from rich.panel import Panel
@@ -56,9 +56,13 @@ class MusicOrganizer:
         self.ui = InteractiveUI()
         self.jobstore = SQLiteJobStore()
 
-        # Dedicated external worker process using SQLite job store
-        self.worker_process = multiprocessing.Process(target=run_worker, daemon=True)
-        self.worker_process.start()
+        # Dedicated single-purpose worker processes
+        self.worker_processes: list[multiprocessing.Process] = []
+        for target in (run_scan_worker, run_analyze_worker, run_move_worker):
+            p = multiprocessing.Process(target=target, daemon=True)
+            print(f"Starting worker process {p}")
+            p.start()
+            self.worker_processes.append(p)
 
         # Processors
         self.album_processor = AlbumProcessor(
@@ -204,8 +208,8 @@ class MusicOrganizer:
                 if structure_type in ("single_album", "multi_disc_album"):
                     metadata = self.directory_analyzer.extract_folder_metadata(folder)
                     if metadata.get("total_files", 0) > 0:
-                        # Enqueue to external worker if enabled, else in-process background
-                        if self.worker_process is not None:
+                        # Enqueue to external workers if enabled, else in-process background
+                        if getattr(self, "worker_processes", None):
                             # Skip if we already have any job recorded for this folder
                             if self.jobstore.has_any_for_folder(folder):
                                 continue
@@ -232,7 +236,7 @@ class MusicOrganizer:
                         album_folder = folder / subdir["name"]
                         metadata = self.directory_analyzer.extract_folder_metadata(album_folder)
                         if metadata.get("total_files", 0) > 0:
-                            if self.worker_process is not None:
+                            if getattr(self, "worker_processes", None):
                                 if self.jobstore.has_any_for_folder(album_folder):
                                     continue
                                 self.jobstore.enqueue(album_folder, metadata, artist_hint=folder.name)
