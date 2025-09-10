@@ -133,7 +133,6 @@ def main_cli(
         # Inject our provider on the organizer (already used inside components)
         organizer.inference = provider
         organizer.structure_classifier.inference = provider
-        organizer.proposal_generator.inference = provider
 
         # Start web server for UI
         url = f"http://{host}:{port}"
@@ -303,6 +302,5 @@ def app_factory():
     organizer = MusicOrganizer(Path("model"), src_path, dst_path)
     organizer.inference = provider
     organizer.structure_classifier.inference = provider
-    organizer.proposal_generator.inference = provider
 
     return create_app(organizer)

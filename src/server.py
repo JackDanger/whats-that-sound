@@ -58,7 +58,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
     # after declaring API routes so that /api/* is not intercepted by the static mount.
 
     @app.get("/api/status")
-    async def status():
+    def status():
         counts = organizer.jobstore.counts()
         ready = organizer.jobstore.fetch_ready(limit=200)
         stats = organizer.progress_tracker.get_stats()
@@ -72,7 +72,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
         }
 
     @app.get("/api/paths")
-    async def get_paths():
+    def get_paths():
         return {
             "current": {"source_dir": str(organizer.source_dir), "target_dir": str(organizer.target_dir)},
             "staged": {
@@ -82,7 +82,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
         }
 
     @app.post("/api/paths")
-    async def post_paths(payload: Dict[str, Any]):
+    def post_paths(payload: Dict[str, Any]):
         nonlocal staged_source, staged_target
         src = payload.get("source_dir")
         dst = payload.get("target_dir")
@@ -124,7 +124,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
         raise HTTPException(400, "invalid action")
 
     @app.get("/api/list")
-    async def list_dirs(path: str):
+    def list_dirs(path: str):
         base = Path(path)
         if not base.exists():
             raise HTTPException(404, "path not found")
@@ -140,12 +140,12 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
             raise HTTPException(500, str(e))
 
     @app.get("/api/ready")
-    async def ready(limit: int = 50):
+    def ready(limit: int = 50):
         items = organizer.jobstore.fetch_ready(limit=limit)
         return [{"path": fp, "name": Path(fp).name} for _, fp, _ in items]
 
     @app.get("/api/folder")
-    async def folder(path: str):
+    def folder(path: str):
         folder = Path(path)
         proposal = organizer.jobstore.get_result(folder)
         if not proposal:
@@ -154,7 +154,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
         return {"metadata": metadata, "proposal": proposal}
 
     @app.post("/api/decision")
-    async def decision(payload: Dict[str, Any]):
+    def decision(payload: Dict[str, Any]):
         path = payload.get("path")
         action = payload.get("action")
         folder = Path(path)
@@ -205,7 +205,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
         return StreamingResponse(status_event_stream(request), media_type="text/event-stream")
 
     @app.get("/api/debug/jobs")
-    async def debug_jobs(limit: int = 100, statuses: Optional[str] = None):
+    def debug_jobs(limit: int = 100, statuses: Optional[str] = None):
         # statuses may be a comma-separated list
         status_list = [s.strip() for s in statuses.split(",")] if statuses else None
         return {
