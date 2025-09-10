@@ -4,7 +4,6 @@ from pathlib import Path
 from rich.console import Console
 
 from .analyzers import DirectoryAnalyzer, StructureClassifier
-from .generators import ProposalGenerator
 from .inference import InferenceProvider
 from .organizers import FileOrganizer
 from .processors import AlbumProcessor, CollectionProcessor
@@ -49,7 +48,6 @@ class MusicOrganizer:
         # Core components
         self.directory_analyzer = DirectoryAnalyzer()
         self.structure_classifier = StructureClassifier(self.inference)
-        self.proposal_generator = ProposalGenerator(self.inference)
         self.file_organizer = FileOrganizer(self.target_dir)
         self.progress_tracker = ProgressTracker()
         self.state_manager = StateManager()
@@ -60,27 +58,23 @@ class MusicOrganizer:
         self.worker_processes: list[multiprocessing.Process] = []
         for target in (run_scan_worker, run_analyze_worker, run_move_worker):
             p = multiprocessing.Process(target=target, daemon=True)
-            print(f"Starting worker process {p}")
+            print(f"Starting worker process {target}")
             p.start()
             self.worker_processes.append(p)
 
         # Processors
         self.album_processor = AlbumProcessor(
             self.directory_analyzer,
-            self.proposal_generator,
             self.file_organizer,
             self.state_manager,
             self.ui,
-            None,
         )
 
         self.collection_processor = CollectionProcessor(
             self.directory_analyzer,
-            self.proposal_generator,
             self.file_organizer,
             self.state_manager,
             self.ui,
-            None,
         )
 
     def update_paths(self, source_dir: Path, target_dir: Path) -> None:
@@ -194,8 +188,6 @@ class MusicOrganizer:
             folders: List of folders to process
             max_jobs: Optional explicit limit on jobs to submit
         """
-        from .processors.background_processor import ProposalJob
-
         count = 0
         for i, folder in enumerate(folders):
             if max_jobs is not None and count >= max_jobs:
@@ -208,16 +200,11 @@ class MusicOrganizer:
                 if structure_type in ("single_album", "multi_disc_album"):
                     metadata = self.directory_analyzer.extract_folder_metadata(folder)
                     if metadata.get("total_files", 0) > 0:
-                        # Enqueue to external workers if enabled, else in-process background
-                        if getattr(self, "worker_processes", None):
-                            # Skip if we already have any job recorded for this folder
-                            if self.jobstore.has_any_for_folder(folder):
-                                continue
-                            self.jobstore.enqueue(folder, metadata)
-                            success = True
-                        else:
-                            job = ProposalJob(folder=folder, metadata=metadata)
-                            success = getattr(self.background_processor, "submit_job", lambda _: False)(job)
+                        # Always enqueue via job store; dedicated worker will process
+                        if self.jobstore.has_any_for_folder(folder):
+                            continue
+                        self.jobstore.enqueue(folder, metadata)
+                        success = True
                         if success:
                             count += 1
                             console.print(
@@ -236,18 +223,10 @@ class MusicOrganizer:
                         album_folder = folder / subdir["name"]
                         metadata = self.directory_analyzer.extract_folder_metadata(album_folder)
                         if metadata.get("total_files", 0) > 0:
-                            if getattr(self, "worker_processes", None):
-                                if self.jobstore.has_any_for_folder(album_folder):
-                                    continue
-                                self.jobstore.enqueue(album_folder, metadata, artist_hint=folder.name)
-                                success = True
-                            else:
-                                job = ProposalJob(
-                                    folder=album_folder,
-                                    metadata=metadata,
-                                    artist_hint=folder.name,
-                                )
-                                success = getattr(self.background_processor, "submit_job", lambda _: False)(job)
+                            if self.jobstore.has_any_for_folder(album_folder):
+                                continue
+                            self.jobstore.enqueue(album_folder, metadata, artist_hint=folder.name)
+                            success = True
                             if success:
                                 count += 1
                                 console.print(
@@ -261,27 +240,16 @@ class MusicOrganizer:
                 )
 
     def _submit_next_job(self, folders, current_idx: int):
-        """Submit background job for the next folder to process.
-
-        Args:
-            folders: List of all folders
-            current_idx: Current folder index (0-based)
-        """
-        from .processors.background_processor import ProposalJob
-
-        # Submit job for folder 2-3 ahead to keep pipeline filled
-        next_idx = current_idx + 2  # Submit job 2 folders ahead
+        """Submit analyze job for the next folder to keep pipeline warm."""
+        next_idx = current_idx + 2
         if next_idx < len(folders):
             folder = folders[next_idx]
             try:
                 metadata = self.directory_analyzer.extract_folder_metadata(folder)
-                if metadata.get("total_files", 0) > 0:
-                    job = ProposalJob(folder=folder, metadata=metadata)
-                    self.background_processor.submit_job(job)
-            except Exception as e:
-                console.print(
-                    f"[dim]Could not queue background job for {folder.name}: {e}[/dim]"
-                )
+                if metadata.get("total_files", 0) > 0 and not self.jobstore.has_any_for_folder(folder):
+                    self.jobstore.enqueue(folder, metadata)
+            except Exception:
+                pass
 
 
 class OrganizationSession:

@@ -56,7 +56,7 @@ class DirectoryAnalyzer:
 
         try:
             items = sorted(path.iterdir(), key=lambda x: (x.is_file(), x.name.lower()))
-        except PermissionError:
+        except (PermissionError, FileNotFoundError, OSError):
             tree_lines.append(f"{prefix}├── [Permission Denied]")
             return
 
@@ -83,18 +83,25 @@ class DirectoryAnalyzer:
 
                 # Count music files in subdirectory
                 try:
-                    for ext in MetadataExtractor.SUPPORTED_FORMATS:
-                        subdir_info["music_files"] += len(list(item.rglob(f"*{ext}")))
-                except PermissionError:
-                    pass
+                    # Count recursively, case-insensitive by suffix check
+                    count = 0
+                    for p in item.rglob("*"):
+                        try:
+                            if p.is_file() and p.suffix.lower() in MetadataExtractor.SUPPORTED_FORMATS:
+                                count += 1
+                        except (PermissionError, OSError):
+                            continue
+                    subdir_info["music_files"] = count
+                except Exception:
+                    subdir_info["music_files"] = 0
 
                 # Count subdirectories
                 try:
                     subdir_info["subdirectories"] = [
                         d.name for d in item.iterdir() if d.is_dir()
                     ]
-                except PermissionError:
-                    pass
+                except (PermissionError, OSError, FileNotFoundError):
+                    subdir_info["subdirectories"] = []
 
                 if depth == 0:
                     analysis["subdirectories"].append(subdir_info)

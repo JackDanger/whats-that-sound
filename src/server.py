@@ -60,7 +60,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
     @app.get("/api/status")
     async def status():
         counts = organizer.jobstore.counts()
-        ready = organizer.jobstore.fetch_approved(limit=20)
+        ready = organizer.jobstore.fetch_ready(limit=200)
         stats = organizer.progress_tracker.get_stats()
         return {
             "source_dir": str(organizer.source_dir),
@@ -140,7 +140,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
             raise HTTPException(500, str(e))
 
     @app.get("/api/ready")
-    async def ready(limit: int = 20):
+    async def ready(limit: int = 50):
         items = organizer.jobstore.fetch_ready(limit=limit)
         return [{"path": fp, "name": Path(fp).name} for _, fp, _ in items]
 
@@ -163,19 +163,8 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
             if not proposal:
                 raise HTTPException(400, "proposal required for accept")
             organizer.state_manager.save_proposal_tracker(folder, proposal)
-            # mark job as moving, then perform file moves in a background task
-            organizer.jobstore.update_latest_status_for_folder(folder, ["ready", "approved"], "moving")
-            async def do_move():
-                try:
-                    # Run sync move in thread to avoid blocking event loop
-                    loop = asyncio.get_running_loop()
-                    await loop.run_in_executor(None, organizer.file_organizer.organize_folder, folder, proposal)
-                    organizer.jobstore.update_latest_status_for_folder(folder, ["moving"], "completed")
-                except Exception as e:
-                    # Record error state on failure
-                    organizer.jobstore.update_latest_status_for_folder(folder, ["moving"], "error")
-                
-            asyncio.create_task(do_move())
+            # Mark job as accepted; mover worker will pick it up and perform file moves
+            organizer.jobstore.update_latest_status_for_folder(folder, ["ready"], "accepted")
             organizer.progress_tracker.increment_processed()
             organizer.progress_tracker.increment_successful(proposal)
             return {"ok": True}
@@ -186,10 +175,10 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
             if not organizer.jobstore.has_any_for_folder(folder, statuses=["analyzing"]):
                 organizer.jobstore.enqueue(folder, metadata, user_feedback=fb)
             else:
-                organizer.jobstore.update_latest_status_for_folder(folder, ["ready", "approved", "skipped"], "analyzing")
+                organizer.jobstore.update_latest_status_for_folder(folder, ["ready", "skipped"], "analyzing")
             return {"ok": True}
         elif action == "skip":
-            organizer.jobstore.update_latest_status_for_folder(folder, ["ready", "approved"], "skipped")
+            organizer.jobstore.update_latest_status_for_folder(folder, ["ready"], "skipped")
             organizer.progress_tracker.increment_processed()
             organizer.progress_tracker.increment_skipped()
             return {"ok": True}
@@ -214,6 +203,15 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
     @app.get("/api/events")
     async def events(request: Request):
         return StreamingResponse(status_event_stream(request), media_type="text/event-stream")
+
+    @app.get("/api/debug/jobs")
+    async def debug_jobs(limit: int = 100, statuses: Optional[str] = None):
+        # statuses may be a comma-separated list
+        status_list = [s.strip() for s in statuses.split(",")] if statuses else None
+        return {
+            "counts": organizer.jobstore.counts(),
+            "recent": organizer.jobstore.recent_jobs(limit=limit, statuses=status_list),
+        }
 
     # Development mode: redirect root to Vite dev server for HMR
     

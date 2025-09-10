@@ -28,6 +28,8 @@ function App() {
   const [applyHidden, setApplyHidden] = useState(false)
   const [readyQueue, setReadyQueue] = useState<{ path: string; name: string }[]>([])
   const [loadingDecision, setLoadingDecision] = useState(false)
+  const [debugJobs, setDebugJobs] = useState<{ counts: Record<string, number>, recent: any[] } | null>(null)
+  const [showDebug, setShowDebug] = useState(false)
   const pickerOpen = useRef<null | 'source' | 'target'>(null)
   const [pickCurrent, setPickCurrent] = useState<string>('/')
   const [pickList, setPickList] = useState<{ name: string; path: string }[]>([])
@@ -46,10 +48,18 @@ function App() {
   async function refreshStatus() {
     const s = await fetchJSON<Status>('/api/status')
     setStatus(s)
-    setReadyQueue(s.ready || [])
-    if (!currentDecision) {
-      await loadNextReady(s.ready)
-    }
+    try {
+      const fresh = await fetchJSON<{ path: string; name: string }[]>('/api/ready?limit=50')
+      setReadyQueue(fresh)
+      if (!currentDecision) {
+        await loadNextReady(fresh)
+      }
+    } catch {}
+    // Fetch debug jobs in the background (best-effort)
+    try {
+      const dj = await fetchJSON<{ counts: Record<string, number>, recent: any[] }>(`/api/debug/jobs?limit=25`)
+      setDebugJobs(dj)
+    } catch {}
   }
 
   async function loadDecision(path: string) {
@@ -117,6 +127,12 @@ function App() {
     connectSSE();
   }, [])
 
+  useEffect(() => {
+    if (!currentDecision && readyQueue.length > 0 && !loadingDecision) {
+      loadNextReady()
+    }
+  }, [readyQueue, currentDecision, loadingDecision])
+
   function openPicker(which: 'source' | 'target') {
     if (busyPaths) return
     pickerOpen.current = which
@@ -175,7 +191,7 @@ function App() {
 
   return (
       <div>
-      <header style={{ padding: '8px 12px', background: '#101820', color: '#fff' }}>
+      <header style={{ padding: '8px 12px', background: '#101820', color: '#fff', display: 'flex', alignItems: 'center', gap: 12 }}>
         <div id="paths">
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 6 }}>
             <b>Source:</b> <span id="curSource">{curSource || '-'}</span>
@@ -195,6 +211,8 @@ function App() {
             </div>
           )}
         </div>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowDebug((v) => !v)} style={{ padding: '4px 8px' }}>Debug</button>
       </header>
 
       <div id="picker" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'none', alignItems: 'center', justifyContent: 'center' }}>
@@ -240,7 +258,7 @@ function App() {
         <div className="panel" style={{ border: '1px solid #ddd', padding: 10, borderRadius: 4 }}>
           <div className="title" style={{ fontWeight: 700, marginBottom: 6 }}>Current Decision</div>
           <div id="current">
-            {!currentDecision ? 'Waiting for ready proposals...' : (
+            {currentDecision ? (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
                 <div style={{ textAlign: 'right' }}>
                   <div><b>Folder:</b></div>
@@ -261,6 +279,15 @@ function App() {
                   <div>{(currentDecision.proposal.reasoning || '').slice(0, 300)}</div>
                 </div>
               </div>
+            ) : readyQueue.length > 0 ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div>Ready items available.</div>
+                <button onClick={() => loadNextReady()} disabled={loadingDecision}>Review next</button>
+              </div>
+            ) : (status && (status.counts["ready"] || 0) > 0) ? (
+              <div>Preparing next decision…</div>
+            ) : (
+              'Waiting for ready proposals...'
             )}
           </div>
           <div id="actions" style={{ marginTop: 8 }}>
@@ -279,12 +306,39 @@ function App() {
         <div className="panel" style={{ border: '1px solid #ddd', padding: 10, borderRadius: 4 }}>
           <div className="title" style={{ fontWeight: 700, marginBottom: 6 }}>Ready</div>
           <ul id="ready">
-            {status?.ready?.length ? status.ready.slice(0, 10).map((item) => (
+            {readyQueue.length ? readyQueue.slice(0, 10).map((item) => (
               <li key={item.path} style={{ cursor: 'pointer' }} onClick={() => loadDecision(item.path)}>{item.name}</li>
             )) : <li>No ready items yet</li>}
           </ul>
         </div>
+        {null}
       </div>
+
+      {showDebug && (
+        <div style={{ position: 'fixed', right: 12, bottom: 12, width: 420, maxHeight: '50vh', overflow: 'auto', background: '#fff', color: '#000', border: '1px solid #ccc', borderRadius: 6, boxShadow: '0 2px 8px rgba(0,0,0,0.2)', padding: 10, zIndex: 9999 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ fontWeight: 700 }}>Debug Jobs</div>
+            <div style={{ flex: 1 }} />
+            <button onClick={() => setShowDebug(false)} style={{ padding: '2px 6px' }}>Close</button>
+          </div>
+          {debugJobs ? (
+            <div>
+              <div style={{ fontSize: 12, color: '#666', margin: '6px 0' }}>
+                queued: {debugJobs.counts["queued"]||0} | analyzing: {debugJobs.counts["analyzing"]||0} | ready: {debugJobs.counts["ready"]||0} | accepted: {debugJobs.counts["accepted"]||0} | moving: {debugJobs.counts["moving"]||0} | skipped: {debugJobs.counts["skipped"]||0} | error: {debugJobs.counts["error"]||0} | completed: {debugJobs.counts["completed"]||0}
+              </div>
+              <ul style={{ maxHeight: 260, overflow: 'auto', margin: 0, paddingLeft: 16 }}>
+                {debugJobs.recent.map((j) => (
+                  <li key={j.id} style={{ fontSize: 12, marginBottom: 2 }}>
+                    [{j.status}] {j.folder_path} ({j.job_type})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: '#999' }}>No data</div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

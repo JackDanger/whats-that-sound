@@ -5,7 +5,6 @@ from typing import Dict
 from rich.console import Console
 
 from ..analyzers import DirectoryAnalyzer
-from ..generators import ProposalGenerator
 from ..organizers import FileOrganizer
 from ..trackers import StateManager
 from ..ui import InteractiveUI
@@ -20,28 +19,22 @@ class AlbumProcessor:
     def __init__(
         self,
         directory_analyzer: DirectoryAnalyzer,
-        proposal_generator: ProposalGenerator,
         file_organizer: FileOrganizer,
         state_manager: StateManager,
         ui: InteractiveUI,
-        background_processor=None,
     ):
         """Initialize the album processor.
 
         Args:
             directory_analyzer: DirectoryAnalyzer instance
-            proposal_generator: ProposalGenerator instance
             file_organizer: FileOrganizer instance
             state_manager: StateManager instance
             ui: InteractiveUI instance
-            background_processor: BackgroundProposalProcessor instance (optional)
         """
         self.directory_analyzer = directory_analyzer
-        self.proposal_generator = proposal_generator
         self.file_organizer = file_organizer
         self.state_manager = state_manager
         self.ui = ui
-        self.background_processor = background_processor
         self.jobstore = SQLiteJobStore()
 
     def process_single_album(self, folder: Path, structure_analysis: Dict) -> bool:
@@ -98,7 +91,7 @@ class AlbumProcessor:
         self.ui.display_folder_info(metadata)
         self.ui.display_file_samples(metadata.get("files", []))
 
-        # Get LLM proposal (try jobstore/external first, then background, then sync)
+        # Get LLM proposal from background worker via job store
         proposal = self._get_proposal(folder, metadata)
 
         # Interactive loop for user feedback
@@ -115,9 +108,9 @@ class AlbumProcessor:
                 return True
 
             elif feedback["action"] == "reconsider":
-                # Get new proposal with user feedback (always synchronous for reconsideration)
-                proposal = self.proposal_generator.get_llm_proposal(
-                    metadata, feedback.get("feedback")
+                # Request a new background proposal with user feedback
+                proposal = self._get_proposal(
+                    folder, metadata, user_feedback=feedback.get("feedback")
                 )
 
             elif feedback["action"] == "skip":
@@ -135,57 +128,24 @@ class AlbumProcessor:
         user_feedback: str = None,
         artist_hint: str = None,
     ) -> Dict:
-        """Get proposal using background processor if available, otherwise fallback to sync.
+        """Get proposal produced by the single background worker via the job store.
 
-        Args:
-            folder: Folder being processed
-            metadata: Folder metadata
-            user_feedback: Optional user feedback for reconsideration
-            artist_hint: Optional artist hint
-
-        Returns:
-            Proposal dictionary
+        If no result exists yet, enqueue an analyze job and wait for the result.
         """
-        # First check if external worker produced a result
-        if not user_feedback:
-            ext = self.jobstore.get_result(folder)
-            if ext:
-                console.print("[green]Using external worker proposal![/green]")
-                return ext
+        # Return existing ready result if present
+        existing = self.jobstore.get_result(folder)
+        if existing and not user_feedback:
+            console.print("[green]Using background worker proposal![/green]")
+            return existing
 
-        if self.background_processor and not user_feedback:
-            # Try to get from background processor first
-            job_id = str(folder)
-            console.print("[cyan]Checking for background proposal...[/cyan]")
+        # Enqueue analyze job if none active
+        if not self.jobstore.has_any_for_folder(folder):
+            self.jobstore.enqueue(folder, metadata, user_feedback=user_feedback, artist_hint=artist_hint, job_type="analyze")
+            console.print("[cyan]Enqueued analyze job for background processing...[/cyan]")
 
-            result = self.background_processor.get_proposal(job_id)
-            if result:
-                if result.error:
-                    console.print(
-                        f"[yellow]Background proposal failed: {result.error}[/yellow]"
-                    )
-                    console.print("[cyan]Generating proposal synchronously...[/cyan]")
-                    return self.proposal_generator.get_llm_proposal(
-                        metadata, user_feedback, artist_hint
-                    )
-                else:
-                    console.print("[green]Using background proposal![/green]")
-                    return result.proposal
-            else:
-                # Not ready yet, wait a bit longer or fallback
-                console.print("[cyan]Waiting for background proposal...[/cyan]")
-                result = self.background_processor.wait_for_proposal(
-                    job_id, timeout=10.0
-                )
-                if result and not result.error:
-                    console.print("[green]Background proposal ready![/green]")
-                    return result.proposal
-                else:
-                    console.print(
-                        "[yellow]Background proposal not ready, generating synchronously...[/yellow]"
-                    )
-
-        # Fallback to synchronous generation
-        return self.proposal_generator.get_llm_proposal(
-            metadata, user_feedback, artist_hint
-        )
+        # Wait for result from background worker
+        result = self.jobstore.wait_for_result(folder, timeout=300.0)
+        if not result:
+            raise RuntimeError("Timed out waiting for background proposal. Ensure analyze worker is running.")
+        console.print("[green]Background proposal ready![/green]")
+        return result

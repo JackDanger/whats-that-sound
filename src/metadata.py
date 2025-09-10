@@ -1,6 +1,7 @@
 """Music metadata extraction utilities."""
 
 from pathlib import Path
+import os
 from typing import Dict, List, Optional, Any
 import mutagen
 from mutagen.id3 import ID3
@@ -67,10 +68,19 @@ class MetadataExtractor:
         if not folder_path.is_dir():
             return {"error": "Not a directory"}
 
-        # Get all music files recursively
+        # Get all music files recursively (case-insensitive by checking suffix)
         music_files = []
-        for ext in self.SUPPORTED_FORMATS:
-            music_files.extend(folder_path.rglob(f"*{ext}"))
+        try:
+            for root, _dirs, files in os.walk(folder_path, topdown=True, onerror=lambda e: None):
+                for name in files:
+                    suffix = Path(name).suffix.lower()
+                    if suffix in self.SUPPORTED_FORMATS:
+                        music_files.append(Path(root) / name)
+        except Exception:
+            # Fallback to Path.rglob if os.walk fails unexpectedly
+            music_files = [
+                p for p in folder_path.rglob("*") if p.is_file() and p.suffix.lower() in self.SUPPORTED_FORMATS
+            ]
 
         # Sort by path for consistent ordering
         music_files.sort()
