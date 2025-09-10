@@ -144,12 +144,19 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
             if not proposal:
                 raise HTTPException(400, "proposal required for accept")
             organizer.state_manager.save_proposal_tracker(folder, proposal)
-            # mark job as moving
+            # mark job as moving, then perform file moves in a background task
             organizer.jobstore.update_latest_status_for_folder(folder, ["ready", "approved"], "moving")
-            # Perform file moves (sync for now). In future, move can be backgrounded.
-            organizer.file_organizer.organize_folder(folder, proposal)
-            # mark job as completed after moving
-            organizer.jobstore.update_latest_status_for_folder(folder, ["moving"], "completed")
+            async def do_move():
+                try:
+                    # Run sync move in thread to avoid blocking event loop
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, organizer.file_organizer.organize_folder, folder, proposal)
+                    organizer.jobstore.update_latest_status_for_folder(folder, ["moving"], "completed")
+                except Exception as e:
+                    # Record error state on failure
+                    organizer.jobstore.update_latest_status_for_folder(folder, ["moving"], "error")
+                
+            asyncio.create_task(do_move())
             organizer.progress_tracker.increment_processed()
             organizer.progress_tracker.increment_successful(proposal)
             return {"ok": True}

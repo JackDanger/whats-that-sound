@@ -440,13 +440,14 @@ class ProgressRefresher:
                 counts = self.organizer.jobstore.counts()
                 queued = counts.get("queued", 0)
                 analyzing = counts.get("analyzing", 0)
-                approved = counts.get("approved", 0)
+                approved = counts.get("ready", 0)
                 moving = counts.get("moving", 0)
                 skipped = counts.get("skipped", 0)
+                errors = counts.get("error", 0)
                 completed = counts.get("completed", 0)
                 # Fetch a few recently approved items to show
-                approved_list = self.organizer.jobstore.fetch_approved(limit=3)
-                lines = [f"Queue: {queued} | Analyzing: {analyzing} | Ready: {approved} | Moving: {moving} | Skipped: {skipped} | Completed: {completed}"]
+                approved_list = self.organizer.jobstore.fetch_ready(limit=3)
+                lines = [f"Queue: {queued} | Analyzing: {analyzing} | Ready: {approved} | Moving: {moving} | Skipped: {skipped} | Errors: {errors} | Completed: {completed}"]
                 for _, folder_path, _ in approved_list:
                     lines.append(f"Ready: {Path(folder_path).name}")
                 panel_text = "\n".join(lines)

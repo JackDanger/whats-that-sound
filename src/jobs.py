@@ -120,7 +120,7 @@ class SQLiteJobStore:
     def fail(self, job_id: int, error: str) -> None:
         with self._connect() as conn:
             conn.execute(
-                "UPDATE jobs SET status='skipped', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                "UPDATE jobs SET status='error', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 (error, job_id),
             )
 
@@ -144,7 +144,7 @@ class SQLiteJobStore:
                 "SELECT status, COUNT(1) FROM jobs GROUP BY status"
             ).fetchall()
             # Normalize legacy 'approved' into 'ready'
-            result: Dict[str, int] = {"queued": 0, "analyzing": 0, "ready": 0, "moving": 0, "skipped": 0, "completed": 0}
+            result: Dict[str, int] = {"queued": 0, "analyzing": 0, "ready": 0, "moving": 0, "skipped": 0, "completed": 0, "error": 0}
             for status, count in rows:
                 if status == "approved":
                     result["ready"] += int(count)

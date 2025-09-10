@@ -81,6 +81,17 @@ def test_reconsider_and_skip(tmp_path: Path):
     assert counts.get("skipped", 0) == 1
 
 
+def test_error_state(tmp_path: Path):
+    store = make_store(tmp_path)
+    folder = tmp_path / "album7"
+    folder.mkdir()
+    job_id = store.enqueue(folder, {"meta": 7})
+    store.claim_next()
+    store.fail(job_id, "synthetic error")
+    counts = store.counts()
+    assert counts.get("error", 0) == 1
+
+
 def test_reset_stale_analyzing(tmp_path: Path):
     store = make_store(tmp_path)
     folder = tmp_path / "album6"
