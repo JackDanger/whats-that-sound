@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import os
 from typing import Any, Dict, Optional
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
@@ -16,9 +17,33 @@ import httpx
 
 
 def create_app(organizer: MusicOrganizer) -> FastAPI:
-    app = FastAPI(title="What's That Sound API")
     # Shutdown signal for long-lived streams (e.g., SSE) to terminate promptly on reload
     shutdown_event: asyncio.Event = asyncio.Event()
+
+    @asynccontextmanager
+    async def app_lifespan(app: FastAPI):
+        # Startup: enqueue initial scan job if DB empty
+        try:
+            from .organizer import FolderDiscovery  # local import to avoid cycles
+            fd = FolderDiscovery(organizer.source_dir, organizer.state_manager)
+            folders = fd.discover() or []
+            if folders:
+                counts = organizer.jobstore.counts()
+                total_existing = sum(counts.values())
+                if total_existing == 0:
+                    organizer.jobstore.enqueue(
+                        organizer.source_dir,
+                        {"type": "scan", "root": str(organizer.source_dir)},
+                        job_type="scan",
+                    )
+        except Exception:
+            pass
+        try:
+            yield
+        finally:
+            shutdown_event.set()
+
+    app = FastAPI(title="What's That Sound API", lifespan=app_lifespan)
     # CORS for local Vite dev server
     app.add_middleware(
         CORSMiddleware,
@@ -30,28 +55,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
     # Staged (unapplied) path changes
     staged_source: Optional[Path] = None
     staged_target: Optional[Path] = None
-    @app.on_event("shutdown")
-    async def _on_shutdown():
-        # Notify streaming generators to exit so the server can stop cleanly
-        shutdown_event.set()
-
-    @app.on_event("startup")
-    async def _on_startup():
-        # On boot, (re)discover folders and enqueue analysis jobs if none exist
-        try:
-            from .organizer import FolderDiscovery  # local import to avoid cycles
-            fd = FolderDiscovery(organizer.source_dir, organizer.state_manager)
-            folders = fd.discover() or []
-            if folders:
-                # If there are no analyzing/ready/moving/completed/skipped jobs yet, prefetch all
-                counts = organizer.jobstore.counts()
-                total_existing = sum(counts.values())
-                if total_existing == 0:
-                    # Enqueue a scan job at the source root; worker will enqueue per-album analyze jobs with marker files
-                    organizer.jobstore.enqueue(organizer.source_dir, {"type": "scan", "root": str(organizer.source_dir)}, job_type="scan")
-        except Exception:
-            # Non-fatal: UI can still run
-            pass
+    
 
 
     # Frontend is served by Vite in development. In production, we will mount the built assets
