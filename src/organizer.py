@@ -439,13 +439,15 @@ class ProgressRefresher:
             try:
                 counts = self.organizer.jobstore.counts()
                 queued = counts.get("queued", 0)
-                running = counts.get("in_progress", 0)
-                done = counts.get("completed", 0)
-                failed = counts.get("failed", 0)
-                # Fetch a few recently completed items to show
-                completed = self.organizer.jobstore.fetch_completed(limit=3)
-                lines = [f"Queue: {queued} | Running: {running} | Ready: {done} | Failed: {failed}"]
-                for _, folder_path, _ in completed:
+                analyzing = counts.get("analyzing", 0)
+                approved = counts.get("approved", 0)
+                moving = counts.get("moving", 0)
+                skipped = counts.get("skipped", 0)
+                completed = counts.get("completed", 0)
+                # Fetch a few recently approved items to show
+                approved_list = self.organizer.jobstore.fetch_approved(limit=3)
+                lines = [f"Queue: {queued} | Analyzing: {analyzing} | Ready: {approved} | Moving: {moving} | Skipped: {skipped} | Completed: {completed}"]
+                for _, folder_path, _ in approved_list:
                     lines.append(f"Ready: {Path(folder_path).name}")
                 panel_text = "\n".join(lines)
                 console.print(Panel(panel_text, title="Background", border_style="dim", expand=False))

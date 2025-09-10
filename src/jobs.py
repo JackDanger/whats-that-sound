@@ -95,37 +95,39 @@ class SQLiteJobStore:
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE;")
             row = conn.execute(
-                "SELECT id, folder_path, metadata_json, user_feedback, artist_hint, status FROM jobs WHERE status = 'queued' ORDER BY id LIMIT 1"
+                "SELECT id, folder_path, metadata_json, user_feedback, artist_hint, status FROM jobs WHERE status IN ('queued','analyzing') ORDER BY id LIMIT 1"
             ).fetchone()
             if not row:
                 conn.execute("COMMIT;")
                 return None
             job_id = row[0]
-            conn.execute(
-                "UPDATE jobs SET status='in_progress', started_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (job_id,),
-            )
+            # Move to analyzing if coming from queued
+            if row[5] != 'analyzing':
+                conn.execute(
+                    "UPDATE jobs SET status='analyzing', started_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                    (job_id,),
+                )
             conn.execute("COMMIT;")
             return Job(*row)
 
-    def complete(self, job_id: int, result: Dict[str, Any]) -> None:
+    def approve(self, job_id: int, result: Dict[str, Any]) -> None:
         with self._connect() as conn:
             conn.execute(
-                "UPDATE jobs SET status='completed', result_json=?, completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                "UPDATE jobs SET status='approved', result_json=?, completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 (json.dumps(result), job_id),
             )
 
     def fail(self, job_id: int, error: str) -> None:
         with self._connect() as conn:
             conn.execute(
-                "UPDATE jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                "UPDATE jobs SET status='skipped', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 (error, job_id),
             )
 
     def get_result(self, folder: Path) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT result_json FROM jobs WHERE folder_path=? AND status='completed' ORDER BY completed_at DESC LIMIT 1",
+                "SELECT result_json FROM jobs WHERE folder_path=? AND status='approved' ORDER BY completed_at DESC LIMIT 1",
                 (str(folder),),
             ).fetchone()
             if not row or not row[0]:
@@ -140,7 +142,7 @@ class SQLiteJobStore:
             rows = conn.execute(
                 "SELECT status, COUNT(1) FROM jobs GROUP BY status"
             ).fetchall()
-            result = {"queued": 0, "in_progress": 0, "completed": 0, "failed": 0}
+            result = {"queued": 0, "analyzing": 0, "approved": 0, "moving": 0, "skipped": 0, "completed": 0}
             for status, count in rows:
                 result[status] = count
             return result
@@ -155,7 +157,7 @@ class SQLiteJobStore:
                 """
                 UPDATE jobs
                 SET status='queued', updated_at=CURRENT_TIMESTAMP, started_at=NULL
-                WHERE status='in_progress' AND started_at IS NOT NULL
+                WHERE status='analyzing' AND started_at IS NOT NULL
                   AND (strftime('%s','now') - strftime('%s', started_at)) > ?
                 """,
                 (max_age_seconds,),
@@ -172,14 +174,14 @@ class SQLiteJobStore:
         return None
 
 
-    def fetch_completed(self, limit: int = 10) -> List[Tuple[int, str, Dict[str, Any]]]:
-        """Fetch recently completed jobs.
+    def fetch_approved(self, limit: int = 10) -> List[Tuple[int, str, Dict[str, Any]]]:
+        """Fetch recently approved jobs (ready for decision).
 
         Returns list of (job_id, folder_path, result_dict)
         """
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id, folder_path, result_json FROM jobs WHERE status='completed' ORDER BY completed_at DESC LIMIT ?",
+                "SELECT id, folder_path, result_json FROM jobs WHERE status='approved' ORDER BY completed_at DESC LIMIT ?",
                 (limit,),
             ).fetchall()
             out: List[Tuple[int, str, Dict[str, Any]]] = []
@@ -194,5 +196,31 @@ class SQLiteJobStore:
     def delete_job(self, job_id: int) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+
+    def update_latest_status_for_folder(self, folder: Path, from_statuses: Optional[List[str]], to_status: str) -> Optional[int]:
+        """Update the most recent job for a folder from one of the given from_statuses to to_status.
+
+        Returns the job id if updated, else None.
+        """
+        with self._connect() as conn:
+            if from_statuses:
+                q_marks = ",".join(["?"] * len(from_statuses))
+                row = conn.execute(
+                    f"SELECT id FROM jobs WHERE folder_path=? AND status IN ({q_marks}) ORDER BY id DESC LIMIT 1",
+                    (str(folder), *from_statuses),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT id FROM jobs WHERE folder_path=? ORDER BY id DESC LIMIT 1",
+                    (str(folder),),
+                ).fetchone()
+            if not row:
+                return None
+            job_id = int(row[0])
+            conn.execute(
+                "UPDATE jobs SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (to_status, job_id),
+            )
+            return job_id
 
 

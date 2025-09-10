@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 
-type Counts = { queued: number; in_progress: number; completed: number; failed: number }
 type Status = {
-  counts: Counts
+  counts: Record<string, number>
   processed: number
   total: number
   ready: { path: string; name: string }[]
@@ -227,7 +226,13 @@ function App() {
           <div className="title" style={{ fontWeight: 700, marginBottom: 6 }}>Background</div>
           <div id="bg">
             {status ? (
-              <>Queue: {status.counts.queued} | Running: {status.counts.in_progress} | Ready: {status.counts.completed} | Failed: {status.counts.failed} | Processed: {status.processed}/{status.total}</>
+              <>Queue: {status.counts["queued"] || 0}
+              {" | Analyzing: "}{status.counts["analyzing"] || 0}
+              {" | Ready: "}{status.counts["approved"] || 0}
+              {" | Moving: "}{status.counts["moving"] || 0}
+              {" | Skipped: "}{status.counts["skipped"] || 0}
+              {" | Completed: "}{status.counts["completed"] || 0}
+              {" | Processed: "}{status.processed}/{status.total}</>
             ) : '-' }
           </div>
         </div>
@@ -235,10 +240,25 @@ function App() {
           <div className="title" style={{ fontWeight: 700, marginBottom: 6 }}>Current Decision</div>
           <div id="current">
             {!currentDecision ? 'Waiting for ready proposals...' : (
-              <div>
-                <div><b>{currentDecision.metadata.folder_name}</b> ({currentDecision.metadata.total_files} files)</div>
-                <div>Artist: {currentDecision.proposal.artist} | Album: {currentDecision.proposal.album} | Year: {currentDecision.proposal.year} | Type: {currentDecision.proposal.release_type}</div>
-                <div id="reasoning">{(currentDecision.proposal.reasoning || '').slice(0, 300)}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10 }}>
+                <div style={{ textAlign: 'right' }}>
+                  <div><b>Folder:</b></div>
+                  <div><b>Files:</b></div>
+                  <div><b>Artist:</b></div>
+                  <div><b>Album:</b></div>
+                  <div><b>Year:</b></div>
+                  <div><b>Type:</b></div>
+                  <div><b>Reasoning:</b></div>
+                </div>
+                <div style={{ textAlign: 'left' }}>
+                  <div>{currentDecision.metadata.folder_name}</div>
+                  <div>{currentDecision.metadata.total_files}</div>
+                  <div>{currentDecision.proposal.artist}</div>
+                  <div>{currentDecision.proposal.album}</div>
+                  <div>{currentDecision.proposal.year}</div>
+                  <div>{currentDecision.proposal.release_type}</div>
+                  <div>{(currentDecision.proposal.reasoning || '').slice(0, 300)}</div>
+                </div>
               </div>
             )}
           </div>

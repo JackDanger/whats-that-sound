@@ -35,7 +35,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
     @app.get("/api/status")
     async def status():
         counts = organizer.jobstore.counts()
-        ready = organizer.jobstore.fetch_completed(limit=20)
+        ready = organizer.jobstore.fetch_approved(limit=20)
         stats = organizer.progress_tracker.get_stats()
         return {
             "source_dir": str(organizer.source_dir),
@@ -137,16 +137,26 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
             if not proposal:
                 raise HTTPException(400, "proposal required for accept")
             organizer.state_manager.save_proposal_tracker(folder, proposal)
+            # mark job as moving
+            organizer.jobstore.update_latest_status_for_folder(folder, ["approved"], "moving")
+            # Perform file moves (sync for now). In future, move can be backgrounded.
             organizer.file_organizer.organize_folder(folder, proposal)
+            # mark job as completed after moving
+            organizer.jobstore.update_latest_status_for_folder(folder, ["moving"], "completed")
             organizer.progress_tracker.increment_processed()
             organizer.progress_tracker.increment_successful(proposal)
             return {"ok": True}
         elif action == "reconsider":
             fb = payload.get("feedback")
             metadata = organizer.directory_analyzer.extract_folder_metadata(folder)
-            organizer.jobstore.enqueue(folder, metadata, user_feedback=fb)
+            # Re-enqueue or transition to analyzing
+            if not organizer.jobstore.has_any_for_folder(folder, statuses=["analyzing"]):
+                organizer.jobstore.enqueue(folder, metadata, user_feedback=fb)
+            else:
+                organizer.jobstore.update_latest_status_for_folder(folder, ["approved", "skipped"], "analyzing")
             return {"ok": True}
         elif action == "skip":
+            organizer.jobstore.update_latest_status_for_folder(folder, ["approved"], "skipped")
             organizer.progress_tracker.increment_processed()
             organizer.progress_tracker.increment_skipped()
             return {"ok": True}
@@ -173,6 +183,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
         return StreamingResponse(status_event_stream(request), media_type="text/event-stream")
 
     # Development mode: redirect root to Vite dev server for HMR
+    
     if os.getenv("WTS_DEV") == "1":
         # Simple reverse proxy to Vite dev server for HMR in dev.
         VITE_DEV_BASE = os.getenv("WTS_VITE_URL", "http://127.0.0.1:5173")
