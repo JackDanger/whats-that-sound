@@ -25,6 +25,7 @@ def _process_one(jobstore: SQLiteJobStore, generator: ProposalGenerator, job_id:
     try:
         metadata = json.loads(metadata_json)
         result = generator.get_llm_proposal(metadata, user_feedback=user_feedback, artist_hint=artist_hint)
+        # Mark job as ready (formerly 'approved')
         jobstore.approve(job_id, result)
     except Exception as e:
         jobstore.fail(job_id, str(e))

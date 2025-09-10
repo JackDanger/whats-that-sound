@@ -113,7 +113,7 @@ class SQLiteJobStore:
     def approve(self, job_id: int, result: Dict[str, Any]) -> None:
         with self._connect() as conn:
             conn.execute(
-                "UPDATE jobs SET status='approved', result_json=?, completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                "UPDATE jobs SET status='ready', result_json=?, completed_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 (json.dumps(result), job_id),
             )
 
@@ -126,8 +126,9 @@ class SQLiteJobStore:
 
     def get_result(self, folder: Path) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
+            # Support legacy 'approved' rows by including them
             row = conn.execute(
-                "SELECT result_json FROM jobs WHERE folder_path=? AND status='approved' ORDER BY completed_at DESC LIMIT 1",
+                "SELECT result_json FROM jobs WHERE folder_path=? AND status IN ('ready','approved') ORDER BY completed_at DESC LIMIT 1",
                 (str(folder),),
             ).fetchone()
             if not row or not row[0]:
@@ -142,9 +143,13 @@ class SQLiteJobStore:
             rows = conn.execute(
                 "SELECT status, COUNT(1) FROM jobs GROUP BY status"
             ).fetchall()
-            result = {"queued": 0, "analyzing": 0, "approved": 0, "moving": 0, "skipped": 0, "completed": 0}
+            # Normalize legacy 'approved' into 'ready'
+            result: Dict[str, int] = {"queued": 0, "analyzing": 0, "ready": 0, "moving": 0, "skipped": 0, "completed": 0}
             for status, count in rows:
-                result[status] = count
+                if status == "approved":
+                    result["ready"] += int(count)
+                else:
+                    result[status] = int(count)
             return result
 
     def reset_stale_analyzing(self, max_age_seconds: int = 300) -> int:
@@ -178,14 +183,14 @@ class SQLiteJobStore:
         return None
 
 
-    def fetch_approved(self, limit: int = 10) -> List[Tuple[int, str, Dict[str, Any]]]:
-        """Fetch recently approved jobs (ready for decision).
+    def fetch_ready(self, limit: int = 10) -> List[Tuple[int, str, Dict[str, Any]]]:
+        """Fetch recently ready jobs (ready for decision).
 
         Returns list of (job_id, folder_path, result_dict)
         """
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id, folder_path, result_json FROM jobs WHERE status='approved' ORDER BY completed_at DESC LIMIT ?",
+                "SELECT id, folder_path, result_json FROM jobs WHERE status IN ('ready','approved') ORDER BY completed_at DESC LIMIT ?",
                 (limit,),
             ).fetchall()
             out: List[Tuple[int, str, Dict[str, Any]]] = []
@@ -200,6 +205,10 @@ class SQLiteJobStore:
     def delete_job(self, job_id: int) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+
+    # Backwards-compat aliases
+    def fetch_approved(self, limit: int = 10) -> List[Tuple[int, str, Dict[str, Any]]]:
+        return self.fetch_ready(limit)
 
     def update_latest_status_for_folder(self, folder: Path, from_statuses: Optional[List[str]], to_status: str) -> Optional[int]:
         """Update the most recent job for a folder from one of the given from_statuses to to_status.

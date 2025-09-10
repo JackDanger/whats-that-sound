@@ -228,7 +228,7 @@ function App() {
             {status ? (
               <>Queue: {status.counts["queued"] || 0}
               {" | Analyzing: "}{status.counts["analyzing"] || 0}
-              {" | Ready: "}{status.counts["approved"] || 0}
+              {" | Ready: "}{status.counts["ready"] || 0}
               {" | Moving: "}{status.counts["moving"] || 0}
               {" | Skipped: "}{status.counts["skipped"] || 0}
               {" | Completed: "}{status.counts["completed"] || 0}

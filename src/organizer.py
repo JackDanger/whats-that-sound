@@ -472,7 +472,7 @@ class DecisionPresenter:
 
     def _update_dashboard(self):
         counts = self.organizer.jobstore.counts()
-        ready_names = [Path(fp).name for _, fp, _ in self.organizer.jobstore.fetch_approved(limit=3)]
+        ready_names = [Path(fp).name for _, fp, _ in self.organizer.jobstore.fetch_ready(limit=3)]
         deciding = self.state.pending[0].name if self.state.pending else ""
         stats = self.organizer.progress_tracker.get_stats()
         self.organizer.ui.render_dashboard(
@@ -480,7 +480,7 @@ class DecisionPresenter:
             str(self.organizer.target_dir),
             counts.get("queued", 0),
             counts.get("analyzing", 0),
-            counts.get("approved", 0),
+            counts.get("ready", 0),
             counts.get("skipped", 0),
             stats.get("total_processed", 0),
             self.state.total,

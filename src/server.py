@@ -122,7 +122,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
 
     @app.get("/api/ready")
     async def ready(limit: int = 20):
-        items = organizer.jobstore.fetch_approved(limit=limit)
+        items = organizer.jobstore.fetch_ready(limit=limit)
         return [{"path": fp, "name": Path(fp).name} for _, fp, _ in items]
 
     @app.get("/api/folder")
@@ -145,7 +145,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
                 raise HTTPException(400, "proposal required for accept")
             organizer.state_manager.save_proposal_tracker(folder, proposal)
             # mark job as moving
-            organizer.jobstore.update_latest_status_for_folder(folder, ["approved"], "moving")
+            organizer.jobstore.update_latest_status_for_folder(folder, ["ready", "approved"], "moving")
             # Perform file moves (sync for now). In future, move can be backgrounded.
             organizer.file_organizer.organize_folder(folder, proposal)
             # mark job as completed after moving
@@ -160,10 +160,10 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
             if not organizer.jobstore.has_any_for_folder(folder, statuses=["analyzing"]):
                 organizer.jobstore.enqueue(folder, metadata, user_feedback=fb)
             else:
-                organizer.jobstore.update_latest_status_for_folder(folder, ["approved", "skipped"], "analyzing")
+                organizer.jobstore.update_latest_status_for_folder(folder, ["ready", "approved", "skipped"], "analyzing")
             return {"ok": True}
         elif action == "skip":
-            organizer.jobstore.update_latest_status_for_folder(folder, ["approved"], "skipped")
+            organizer.jobstore.update_latest_status_for_folder(folder, ["ready", "approved"], "skipped")
             organizer.progress_tracker.increment_processed()
             organizer.progress_tracker.increment_skipped()
             return {"ok": True}
