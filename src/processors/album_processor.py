@@ -7,7 +7,6 @@ from typing import Dict
 from ..analyzers import DirectoryAnalyzer
 from ..organizers import FileOrganizer
 from ..trackers import StateManager
-from ..ui import InteractiveUI
 from ..jobs import SQLiteJobStore
 
  
@@ -21,7 +20,6 @@ class AlbumProcessor:
         directory_analyzer: DirectoryAnalyzer,
         file_organizer: FileOrganizer,
         state_manager: StateManager,
-        ui: InteractiveUI,
     ):
         """Initialize the album processor.
 
@@ -34,7 +32,6 @@ class AlbumProcessor:
         self.directory_analyzer = directory_analyzer
         self.file_organizer = file_organizer
         self.state_manager = state_manager
-        self.ui = ui
         self.jobstore = SQLiteJobStore()
 
     def process_single_album(self, folder: Path, structure_analysis: Dict) -> bool:
@@ -87,17 +84,15 @@ class AlbumProcessor:
         Returns:
             True if successfully processed, False otherwise
         """
-        # Display folder info
-        self.ui.display_folder_info(metadata)
-        self.ui.display_file_samples(metadata.get("files", []))
+        # No terminal UI; React handles presentation
 
         # Get LLM proposal from background worker via job store
         proposal = self._get_proposal(folder, metadata)
 
         # Interactive loop for user feedback
         while True:
-            self.ui.display_llm_proposal(proposal)
-            feedback = self.ui.get_user_feedback(proposal)
+            # No interactive loop here; external UI will drive decisions
+            feedback = {"action": "accept", "proposal": proposal}
 
             if feedback["action"] == "accept":
                 # Save proposal to tracker file before organizing
@@ -114,11 +109,11 @@ class AlbumProcessor:
                 )
 
             elif feedback["action"] == "skip":
-                console.print("[yellow]Skipping this folder...[/yellow]")
+                # Skip without terminal output
                 return False
 
             elif feedback["action"] == "cancel":
-                console.print("[red]Cancelling organization...[/red]")
+                # Cancel without terminal output
                 return False
 
     def _get_proposal(
@@ -135,17 +130,16 @@ class AlbumProcessor:
         # Return existing ready result if present
         existing = self.jobstore.get_result(folder)
         if existing and not user_feedback:
-            console.print("[green]Using background worker proposal![/green]")
+            # Use existing result
             return existing
 
         # Enqueue analyze job if none active
         if not self.jobstore.has_any_for_folder(folder):
             self.jobstore.enqueue(folder, metadata, user_feedback=user_feedback, artist_hint=artist_hint, job_type="analyze")
-            console.print("[cyan]Enqueued analyze job for background processing...[/cyan]")
 
         # Wait for result from background worker
         result = self.jobstore.wait_for_result(folder, timeout=300.0)
         if not result:
             raise RuntimeError("Timed out waiting for background proposal. Ensure analyze worker is running.")
-        console.print("[green]Background proposal ready![/green]")
+        
         return result

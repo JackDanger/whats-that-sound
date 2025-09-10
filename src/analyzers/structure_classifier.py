@@ -2,10 +2,9 @@
 
 from typing import Dict
 from src.inference import InferenceProvider
-from rich.console import Console
+import logging
 
-console = Console()
-
+logger = logging.getLogger("wts.structure_classifier")
 
 class StructureClassifier:
     """Classifies directory structures using LLM and heuristics."""
@@ -23,8 +22,6 @@ class StructureClassifier:
         Returns:
             One of: "single_album", "multi_disc_album", "artist_collection"
         """
-        console.print("\n[cyan]Classifying directory structure...[/cyan]")
-
         prompt = self._build_classification_prompt(structure_analysis)
 
         try:
@@ -39,7 +36,6 @@ class StructureClassifier:
                 return self._heuristic_classification(structure_analysis)
 
         except Exception as e:
-            console.print(f"[red]Error classifying structure: {e}[/red]")
             return self._heuristic_classification(structure_analysis)
 
     def _build_classification_prompt(self, structure_analysis: Dict) -> str:

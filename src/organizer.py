@@ -14,7 +14,8 @@ import os
 from .worker import run_scan_worker, run_analyze_worker, run_move_worker
 import threading
 import time
- 
+import logging
+logger = logging.getLogger("wts.organizer")
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -36,7 +37,7 @@ class MusicOrganizer:
         self.target_dir = target_dir
 
         # Initialize inference provider (external or local server based)
-        print(f"Configuring inference provider (model: {model_path.name})")
+        logger.info(f"Configuring inference provider (model: {model_path.name})")
         self.inference = InferenceProvider()
 
         # Initialize components
@@ -50,13 +51,14 @@ class MusicOrganizer:
         self.file_organizer = FileOrganizer(self.target_dir)
         self.progress_tracker = ProgressTracker()
         self.state_manager = StateManager()
+        # Terminal UI removed; web UI is primary
         self.jobstore = SQLiteJobStore()
 
         # Dedicated single-purpose worker processes
         self.worker_processes: list[multiprocessing.Process] = []
         for target in (run_scan_worker, run_analyze_worker, run_move_worker):
             p = multiprocessing.Process(target=target, daemon=True)
-            print(f"Starting worker process {target}")
+            logger.info(f"Starting worker process {target}")
             p.start()
             self.worker_processes.append(p)
 
@@ -65,14 +67,12 @@ class MusicOrganizer:
             self.directory_analyzer,
             self.file_organizer,
             self.state_manager,
-            self.ui,
         )
 
         self.collection_processor = CollectionProcessor(
             self.directory_analyzer,
             self.file_organizer,
             self.state_manager,
-            self.ui,
         )
 
     def update_paths(self, source_dir: Path, target_dir: Path) -> None:
@@ -93,8 +93,7 @@ class MusicOrganizer:
         session = OrganizationSession(self)
         try:
             session.start()
-            # Start live dashboard
-            self.ui.start_live()
+            # Live dashboard handled by web UI
 
             folders = FolderDiscovery(self.source_dir, self.state_manager).discover()
             if not folders:
@@ -104,7 +103,7 @@ class MusicOrganizer:
             try:
                 reset = self.jobstore.reset_stale_analyzing()
                 if reset:
-                    console.print(f"[dim]Re-queued {reset} stale jobs from previous run[/dim]")
+                    logger.info(f"Re-queued {reset} stale jobs from previous run")
             except Exception:
                 pass
 
@@ -120,7 +119,6 @@ class MusicOrganizer:
 
         finally:
             session.stop()
-            self.ui.stop_live()
 
     def _process_folder_by_type(
         self, folder: Path, structure_type: str, structure_analysis: dict
@@ -169,7 +167,7 @@ class MusicOrganizer:
             return success
 
         else:
-            console.print(f"[red]Unknown structure type: {structure_type}[/red]")
+            logger.error(f"Unknown structure type: {structure_type}")
             return False
 
     def _prefetch_proposals(self, folders, max_jobs: int = None):
@@ -205,7 +203,7 @@ class MusicOrganizer:
                         success = True
                         if success:
                             count += 1
-                            console.print(
+                            logger.info(
                                 f"[dim]Queued background proposal for {folder.name}[/dim]"
                             )
                         else:
@@ -227,13 +225,13 @@ class MusicOrganizer:
                             success = True
                             if success:
                                 count += 1
-                                console.print(
+                                logger.info(
                                     f"[dim]Queued background proposal for {album_folder.name}[/dim]"
                                 )
                             else:
                                 break
             except Exception as e:
-                console.print(
+                logger.error(
                     f"[yellow]Could not queue background job for {folder.name}: {e}[/yellow]"
                 )
 
@@ -263,9 +261,7 @@ class OrganizationSession:
     def stop(self):
         """Stop the organization session and display summary."""
         # Let worker run; nothing to stop here for now
-        self.organizer.ui.display_completion_summary(
-            self.organizer.progress_tracker.get_stats()
-        )
+        # No terminal summary; web UI shows status
 
 
 class FolderDiscovery:
@@ -280,7 +276,7 @@ class FolderDiscovery:
         folders = [d for d in self.source_dir.iterdir() if d.is_dir()]
 
         if not folders:
-            console.print("[yellow]No folders found in source directory.[/yellow]")
+            logger.warning("No folders found in source directory.")
             return None
 
         unorganized_folders, organized_count = (
@@ -288,15 +284,15 @@ class FolderDiscovery:
         )
 
         if organized_count > 0:
-            console.print(
+            logger.warning(
                 f"[yellow]Found {organized_count} already organized folders, skipping them.[/yellow]"
             )
 
         if not unorganized_folders:
-            console.print("[yellow]No unorganized folders found.[/yellow]")
+            logger.warning("No unorganized folders found.")
             return None
 
-        console.print(
+        logger.info(
             f"\n[bold cyan]Found {len(unorganized_folders)} folders to process[/bold cyan]\n"
         )
 
@@ -345,27 +341,25 @@ class FolderProcessor:
             # Update progress tracking
             self._update_progress(success)
 
-            console.print("\n" + "─" * 80 + "\n")
-
         except Exception as e:
-            console.print(f"[red]Error processing {self.folder.name}: {e}[/red]")
+            logger.error(f"Error processing {self.folder.name}: {e}")
             self.organizer.progress_tracker.increment_errors()
 
     def _analyze_structure(self):
         """Analyze directory structure."""
-        console.print("\n[cyan]Analyzing directory structure...[/cyan]")
+        logger.info("Analyzing directory structure...")
         structure_analysis = (
             self.organizer.directory_analyzer.analyze_directory_structure(self.folder)
         )
 
         if structure_analysis["total_music_files"] == 0:
-            console.print(
+            logger.warning(
                 "[yellow]No music files found in this folder, skipping...[/yellow]"
             )
             self.organizer.progress_tracker.increment_skipped()
             return None
 
-        self.organizer.ui.display_structure_analysis(structure_analysis)
+        # Web UI displays structure
         return structure_analysis
 
     def _classify_structure(self, structure_analysis):
@@ -375,7 +369,7 @@ class FolderProcessor:
                 structure_analysis
             )
         )
-        console.print(f"[cyan]Detected structure type: {structure_type}[/cyan]")
+        logger.info(f"Detected structure type: {structure_type}")
         return structure_type
 
     def _update_progress(self, success):
@@ -421,7 +415,7 @@ class ProgressRefresher:
                 for _, folder_path, _ in approved_list:
                     lines.append(f"Ready: {Path(folder_path).name}")
                 panel_text = "\n".join(lines)
-                console.print(Panel(panel_text, title="Background", border_style="dim", expand=False))
+                logger.info(panel_text)
             except Exception:
                 pass
             time.sleep(self.interval)
@@ -441,37 +435,15 @@ class DecisionPresenter:
         self.organizer = organizer
         self.state = PresenterState(total=len(folders), processed=0, pending=list(folders))
 
-    def _update_dashboard(self):
-        counts = self.organizer.jobstore.counts()
-        ready_names = [Path(fp).name for _, fp, _ in self.organizer.jobstore.fetch_ready(limit=3)]
-        deciding = self.state.pending[0].name if self.state.pending else ""
-        stats = self.organizer.progress_tracker.get_stats()
-        self.organizer.ui.render_dashboard(
-            str(self.organizer.source_dir),
-            str(self.organizer.target_dir),
-            counts.get("queued", 0),
-            counts.get("analyzing", 0),
-            counts.get("ready", 0),
-            counts.get("skipped", 0),
-            stats.get("total_processed", 0),
-            self.state.total,
-            deciding,
-            ready_names,
-        )
-
     def _present_decision(self, folder: Path, proposal: dict) -> bool:
         # Show context
         metadata = self.organizer.directory_analyzer.extract_folder_metadata(folder)
-        self.organizer.ui.display_folder_info(metadata)
-        self.organizer.ui.display_file_samples(metadata.get("files", []))
-        self.organizer.ui.display_llm_proposal(proposal)
-        feedback = self.organizer.ui.get_user_feedback(proposal)
 
         if feedback["action"] == "accept":
-            self.organizer.state_manager.save_proposal_tracker(folder, feedback["proposal"])
-            self.organizer.file_organizer.organize_folder(folder, feedback["proposal"])
+            self.organizer.state_manager.save_proposal_tracker(folder, proposal)
+            self.organizer.file_organizer.organize_folder(folder, proposal)
             self.organizer.progress_tracker.increment_processed()
-            self.organizer.progress_tracker.increment_successful(feedback["proposal"])
+            self.organizer.progress_tracker.increment_successful(proposal)
             return True
         elif feedback["action"] == "reconsider":
             # Enqueue reconsideration
@@ -493,7 +465,6 @@ class DecisionPresenter:
         refresher.start()
         try:
             while self.state.pending:
-                self._update_dashboard()
 
                 # Drain ready decisions first
                 made_progress = False
@@ -501,7 +472,7 @@ class DecisionPresenter:
                     ready = self.organizer.jobstore.get_result(folder)
                     if not ready:
                         continue
-                    self.organizer.ui.display_progress(
+                    logger.info(
                         self.state.total - len(self.state.pending) + 1, self.state.total, folder.name
                     )
                     acted = self._present_decision(folder, ready)

@@ -7,7 +7,6 @@ from typing import Dict, List
 from ..analyzers import DirectoryAnalyzer
 from ..organizers import FileOrganizer
 from ..trackers import StateManager
-from ..ui import InteractiveUI
 from ..jobs import SQLiteJobStore
 
  
@@ -21,7 +20,6 @@ class CollectionProcessor:
         directory_analyzer: DirectoryAnalyzer,
         file_organizer: FileOrganizer,
         state_manager: StateManager,
-        ui: InteractiveUI,
     ):
         """Initialize the collection processor.
 
@@ -34,7 +32,6 @@ class CollectionProcessor:
         self.directory_analyzer = directory_analyzer
         self.file_organizer = file_organizer
         self.state_manager = state_manager
-        self.ui = ui
         self.jobstore = SQLiteJobStore()
 
     def process_artist_collection(self, folder: Path, structure_analysis: Dict) -> bool:
@@ -96,17 +93,15 @@ class CollectionProcessor:
         Returns:
             Proposal dict if successful, None if skipped/cancelled
         """
-        # Display folder info
-        self.ui.display_folder_info(metadata)
-        self.ui.display_file_samples(metadata.get("files", []))
+        # No terminal UI; React handles presentation
 
         # Get LLM proposal with artist hint (prefer external worker, then background)
         proposal = self._get_proposal(album_folder, metadata, artist_hint=artist_hint)
 
         # Interactive loop for user feedback
         while True:
-            self.ui.display_llm_proposal(proposal)
-            feedback = self.ui.get_user_feedback(proposal)
+            # No interactive loop here; external UI will drive decisions
+            feedback = {"action": "accept", "proposal": proposal}
 
             if feedback["action"] == "accept":
                 # Organize this album
@@ -120,11 +115,11 @@ class CollectionProcessor:
                 )
 
             elif feedback["action"] == "skip":
-                console.print(f"[yellow]Skipping album: {album_folder.name}[/yellow]")
+                # Skip without terminal output
                 return None
 
             elif feedback["action"] == "cancel":
-                console.print("[red]Cancelling organization...[/red]")
+                # Cancel without terminal output
                 return None
 
     def _get_proposal(

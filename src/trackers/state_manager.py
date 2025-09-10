@@ -1,11 +1,8 @@
 """State management for music organization."""
-
+import logging
 import json
 from pathlib import Path
 from typing import Dict, List
-from rich.console import Console
-
-console = Console()
 
 
 class StateManager:
@@ -14,6 +11,9 @@ class StateManager:
     def __init__(self):
         """Initialize the state manager."""
         pass
+
+    logger = logging.getLogger("wts.state_manager")
+
 
     def is_already_organized(self, folder: Path) -> bool:
         """Check if a folder has already been organized.
@@ -42,7 +42,7 @@ class StateManager:
         for folder in folders:
             if self.is_already_organized(folder):
                 organized_count += 1
-                console.print(f"[dim]Skipping {folder.name} (already organized)[/dim]")
+                logger.info(f"Skipping {folder.name} (already organized)")
             else:
                 unorganized_folders.append(folder)
 
@@ -66,11 +66,11 @@ class StateManager:
         try:
             with open(tracker_file, "w", encoding="utf-8") as f:
                 json.dump(tracker_data, f, indent=2, ensure_ascii=False)
-            console.print(
+            logger.info(
                 f"[dim]Saved organization record to {tracker_file.name}[/dim]"
             )
         except Exception as e:
-            console.print(f"[red]Warning: Could not save tracker file: {e}[/red]")
+            logger.error(f"Warning: Could not save tracker file: {e}")
 
     def save_collection_tracker(self, folder: Path, albums: List[Dict]):
         """Save tracker file for an artist collection.
@@ -91,9 +91,9 @@ class StateManager:
         try:
             with open(tracker_file, "w", encoding="utf-8") as f:
                 json.dump(tracker_data, f, indent=2, ensure_ascii=False)
-            console.print(f"[dim]Saved collection record to {tracker_file.name}[/dim]")
+            logger.info(f"Saved collection record to {tracker_file.name}")
         except Exception as e:
-            console.print(f"[red]Warning: Could not save tracker file: {e}[/red]")
+            logger.error(f"Warning: Could not save tracker file: {e}")
 
     def load_tracker_data(self, folder: Path) -> Dict:
         """Load tracker data for a folder.
@@ -113,5 +113,5 @@ class StateManager:
             with open(tracker_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
-            console.print(f"[red]Error loading tracker file: {e}[/red]")
+            logger.error(f"Error loading tracker file: {e}")
             return {}

@@ -3,11 +3,8 @@
 import shutil
 from pathlib import Path
 from typing import Dict
-from rich.console import Console
 
 from ..metadata import MetadataExtractor
-
-console = Console()
 
 
 class FileOrganizer:
@@ -31,8 +28,6 @@ class FileOrganizer:
         Returns:
             Number of files copied
         """
-        console.print("\n[cyan]Organizing files...[/cyan]")
-
         # Create target directory structure
         artist = self._sanitize_filename(proposal["artist"])
         album = self._sanitize_filename(proposal["album"])
@@ -56,10 +51,9 @@ class FileOrganizer:
                     shutil.copy2(file_path, target_path)
                     copied += 1
                 except Exception as e:
-                    console.print(f"[red]Error copying {file_path.name}: {e}[/red]")
 
-        console.print(
-            f"[green]✓ Organized {copied} files to: {album_dir.relative_to(self.target_dir)}[/green]"
+        logger.info(
+            f"Organized {copied} files to: {album_dir.relative_to(self.target_dir)}"
         )
 
         return copied
