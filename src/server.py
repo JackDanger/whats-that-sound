@@ -17,6 +17,8 @@ import httpx
 
 def create_app(organizer: MusicOrganizer) -> FastAPI:
     app = FastAPI(title="What's That Sound API")
+    # Shutdown signal for long-lived streams (e.g., SSE) to terminate promptly on reload
+    shutdown_event: asyncio.Event = asyncio.Event()
     # CORS for local Vite dev server
     app.add_middleware(
         CORSMiddleware,
@@ -28,6 +30,11 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
     # Staged (unapplied) path changes
     staged_source: Optional[Path] = None
     staged_target: Optional[Path] = None
+    @app.on_event("shutdown")
+    async def _on_shutdown():
+        # Notify streaming generators to exit so the server can stop cleanly
+        shutdown_event.set()
+
 
     # Frontend is served by Vite in development. In production, we will mount the built assets
     # after declaring API routes so that /api/* is not intercepted by the static mount.
@@ -166,7 +173,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
     # Shared SSE generator for status/events
     async def status_event_stream(request: Request):
         while True:
-            if await request.is_disconnected():
+            if shutdown_event.is_set() or await request.is_disconnected():
                 break
             counts = organizer.jobstore.counts()
             stats = organizer.progress_tracker.get_stats()

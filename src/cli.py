@@ -180,6 +180,8 @@ def main_cli(
                     str(port),
                     "--reload",
                     "--factory",
+                    "--timeout-keep-alive",
+                    "5",
                 ]
                 processes.append(subprocess.Popen(uvicorn_cmd, env=env))
 
@@ -231,7 +233,7 @@ def main_cli(
                             pass
         else:
             app = create_app(organizer)
-            uvicorn.run(app, host=host, port=port, reload=False)
+            uvicorn.run(app, host=host, port=port, reload=False, timeout_keep_alive=5)
 
     except click.ClickException:
         raise
