@@ -24,18 +24,14 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
     async def app_lifespan(app: FastAPI):
         # Startup: enqueue initial scan job if DB empty
         try:
-            from .organizer import FolderDiscovery  # local import to avoid cycles
-            fd = FolderDiscovery(organizer.source_dir, organizer.state_manager)
-            folders = fd.discover() or []
-            if folders:
-                counts = organizer.jobstore.counts()
-                total_existing = sum(counts.values())
-                if total_existing == 0:
-                    organizer.jobstore.enqueue(
-                        organizer.source_dir,
-                        {"type": "scan", "root": str(organizer.source_dir)},
-                        job_type="scan",
-                    )
+            counts = organizer.jobstore.counts()
+            total_existing = sum(counts.values())
+            if total_existing == 0:
+                organizer.jobstore.enqueue(
+                    organizer.source_dir,
+                    {"type": "scan", "root": str(organizer.source_dir)},
+                    job_type="scan",
+                )
         except Exception:
             pass
         try:
@@ -106,21 +102,9 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
             new_target = staged_target or organizer.target_dir
             # Apply paths
             organizer.update_paths(new_source, new_target)
-            # Re-run discovery and prefetch like at start
+            # Enqueue a scan job for new source
             try:
-                folders = []
-                try:
-                    from .organizer import FolderDiscovery  # local import to avoid cycles
-                    fd = FolderDiscovery(organizer.source_dir, organizer.state_manager)
-                    folders = fd.discover() or []
-                except Exception:
-                    folders = []
-                if folders:
-                    # Prefetch for changed source regardless of existing jobs; this ensures newly detected folders are queued
-                    try:
-                        organizer._prefetch_proposals(folders)
-                    except Exception:
-                        pass
+                organizer.jobstore.enqueue(organizer.source_dir, {"type": "scan", "root": str(organizer.source_dir)}, job_type="scan")
             finally:
                 staged_source = None
                 staged_target = None

@@ -108,12 +108,12 @@ Respond with ONLY the classification (one of the three options above)."""
         subdirs = structure_analysis["subdirectories"]
         direct_files = structure_analysis["direct_music_files"]
 
-        # Single album: most/all files in root directory
+        # Single album: direct audio present; not a multi-disc pattern
         if direct_files > 0 and len(subdirs) <= 1:
             return "single_album"
 
-        # Multi-disc album: subdirectories with names like "CD1", "Disc 1", etc.
-        if len(subdirs) >= 2 and len(subdirs) <= 6:
+        # Multi-disc album: require >=2 disc-like subdirs, majority disc-like, and no direct files
+        if len(subdirs) >= 2 and len(subdirs) <= 6 and direct_files == 0:
             disc_patterns = ["cd", "disc", "disk", "volume", "vol"]
             disc_like_count = 0
             for subdir in subdirs:
@@ -121,7 +121,7 @@ Respond with ONLY the classification (one of the three options above)."""
                 if any(pattern in name_lower for pattern in disc_patterns):
                     disc_like_count += 1
 
-            if disc_like_count >= len(subdirs) * 0.5:  # At least half look like discs
+            if disc_like_count >= max(1, int(len(subdirs) * 0.5)):  # Majority look like discs
                 return "multi_disc_album"
 
         # Artist collection: multiple subdirectories that don't look like discs

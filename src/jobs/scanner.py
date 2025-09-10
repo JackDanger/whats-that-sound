@@ -11,8 +11,23 @@ def enqueue_scan_jobs(jobstore: SQLiteJobStore, root: Path) -> None:
     jobstore.enqueue(root, {"type": "scan", "root": str(root)}, job_type="scan")
 
 
+IGNORE_DIR_NAMES = {
+    "scans",
+    "scan",
+    "artwork",
+    "covers",
+    "cover",
+    "booklet",
+    "extras",
+    "logs",
+    "log",
+}
+
+
 def _dir_has_music_anywhere(dir_path: Path) -> bool:
     for root, _dirs, files in os.walk(dir_path, topdown=True, onerror=lambda e: None):
+        # prune ignored directories
+        _dirs[:] = [d for d in _dirs if d.lower() not in IGNORE_DIR_NAMES]
         for name in files:
             if Path(name).suffix.lower() in MetadataExtractor.SUPPORTED_FORMATS:
                 return True
@@ -31,7 +46,15 @@ def _dir_has_music_direct(dir_path: Path) -> bool:
 
 def _looks_like_disc_folder(name: str) -> bool:
     lowered = name.lower()
-    return lowered.startswith("cd") or lowered.startswith("disc")
+    if lowered in IGNORE_DIR_NAMES:
+        return False
+    return (
+        lowered.startswith("cd")
+        or lowered.startswith("disc")
+        or lowered.startswith("disk")
+        or lowered.startswith("vol")
+        or lowered.startswith("volume")
+    )
 
 
 def perform_scan(jobstore: SQLiteJobStore, base: Path) -> None:
@@ -54,11 +77,13 @@ def perform_scan(jobstore: SQLiteJobStore, base: Path) -> None:
                 continue
 
             # Inspect subdirectories
-            subdirs = [d for d in artist_or_album.iterdir() if d.is_dir()]
-            # Multi-disc heuristic
-            if any(_looks_like_disc_folder(d.name) for d in subdirs):
-                jobstore.enqueue(artist_or_album, {"folder_name": artist_or_album.name}, job_type="analyze")
-                continue
+            subdirs = [d for d in artist_or_album.iterdir() if d.is_dir() and d.name.lower() not in IGNORE_DIR_NAMES]
+            # Multi-disc heuristic (stricter): require >=2 disc-like subdirs, no direct music, majority disc-like
+            if subdirs:
+                disc_like = [d for d in subdirs if _looks_like_disc_folder(d.name)]
+                if not direct_music and len(disc_like) >= 2 and len(disc_like) >= max(1, int(0.5 * len(subdirs))):
+                    jobstore.enqueue(artist_or_album, {"folder_name": artist_or_album.name}, job_type="analyze")
+                    continue
 
             # Artist collection heuristic: enqueue each subdir that contains music
             enqueued_any = False
