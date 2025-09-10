@@ -25,12 +25,14 @@ class Job:
     user_feedback: Optional[str]
     artist_hint: Optional[str]
     status: str
+    job_type: str
 
 
 class SQLiteJobStore:
     def __init__(self, db_path: str = DEFAULT_DB) -> None:
         self.db_path = db_path
         self._ensure_schema()
+        self._migrate_legacy_statuses()
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30, isolation_level=None)
@@ -49,6 +51,7 @@ class SQLiteJobStore:
                   user_feedback TEXT,
                   artist_hint TEXT,
                   status TEXT NOT NULL DEFAULT 'queued',
+                  job_type TEXT NOT NULL DEFAULT 'analyze',
                   error TEXT,
                   result_json TEXT,
                   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -64,25 +67,54 @@ class SQLiteJobStore:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_jobs_folder ON jobs(folder_path);"
             )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs(job_type);"
+            )
 
-    def enqueue(self, folder: Path, metadata: Dict[str, Any], user_feedback: Optional[str] = None, artist_hint: Optional[str] = None) -> int:
+    def _migrate_legacy_statuses(self) -> None:
+        """Normalize legacy status names to the current state machine.
+
+        - in_progress -> analyzing
+        - completed   -> ready (legacy meaning was "proposal ready")
+        - failed      -> error
+        """
+        with self._connect() as conn:
+            conn.execute("UPDATE jobs SET status='analyzing' WHERE status='in_progress';")
+            conn.execute("UPDATE jobs SET status='ready' WHERE status='completed';")
+            conn.execute("UPDATE jobs SET status='error' WHERE status='failed';")
+
+    def enqueue(self, folder: Path, metadata: Dict[str, Any], user_feedback: Optional[str] = None, artist_hint: Optional[str] = None, job_type: str = "analyze") -> int:
         with self._connect() as conn:
             cur = conn.execute(
                 """
-                INSERT INTO jobs(folder_path, metadata_json, user_feedback, artist_hint)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO jobs(folder_path, metadata_json, user_feedback, artist_hint, job_type)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 (
                     str(folder),
                     json.dumps(metadata),
                     user_feedback,
                     artist_hint,
+                    job_type,
                 ),
             )
             return int(cur.lastrowid)
 
     def has_any_for_folder(self, folder: Path, statuses: Optional[List[str]] = None) -> bool:
-        statuses = statuses or ["queued", "in_progress", "completed"]
+        # Default: consider all known statuses (including legacy aliases)
+        statuses = statuses or [
+            "queued",
+            "analyzing",
+            "ready",
+            "moving",
+            "skipped",
+            "completed",
+            "error",
+            # legacy
+            "in_progress",
+            "approved",
+            "failed",
+        ]
         q_marks = ",".join(["?"] * len(statuses))
         with self._connect() as conn:
             row = conn.execute(
@@ -95,7 +127,7 @@ class SQLiteJobStore:
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE;")
             row = conn.execute(
-                "SELECT id, folder_path, metadata_json, user_feedback, artist_hint, status FROM jobs WHERE status IN ('queued','analyzing') ORDER BY id LIMIT 1"
+                "SELECT id, folder_path, metadata_json, user_feedback, artist_hint, status, job_type FROM jobs WHERE status IN ('queued','analyzing') ORDER BY CASE job_type WHEN 'scan' THEN 0 ELSE 1 END, id LIMIT 1"
             ).fetchone()
             if not row:
                 conn.execute("COMMIT;")
@@ -126,9 +158,9 @@ class SQLiteJobStore:
 
     def get_result(self, folder: Path) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
-            # Support legacy 'approved' rows by including them
+            # Support legacy rows by including 'approved' and 'completed' (older "ready")
             row = conn.execute(
-                "SELECT result_json FROM jobs WHERE folder_path=? AND status IN ('ready','approved') ORDER BY completed_at DESC LIMIT 1",
+                "SELECT result_json FROM jobs WHERE folder_path=? AND status IN ('ready','approved','completed') ORDER BY completed_at DESC LIMIT 1",
                 (str(folder),),
             ).fetchone()
             if not row or not row[0]:
@@ -143,10 +175,10 @@ class SQLiteJobStore:
             rows = conn.execute(
                 "SELECT status, COUNT(1) FROM jobs GROUP BY status"
             ).fetchall()
-            # Normalize legacy 'approved' into 'ready'
+            # Normalize legacy 'approved' and 'completed' into 'ready'
             result: Dict[str, int] = {"queued": 0, "analyzing": 0, "ready": 0, "moving": 0, "skipped": 0, "completed": 0, "error": 0}
             for status, count in rows:
-                if status == "approved":
+                if status in ("approved", "completed"):
                     result["ready"] += int(count)
                 else:
                     result[status] = int(count)
@@ -190,7 +222,7 @@ class SQLiteJobStore:
         """
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id, folder_path, result_json FROM jobs WHERE status IN ('ready','approved') ORDER BY completed_at DESC LIMIT ?",
+                "SELECT id, folder_path, result_json FROM jobs WHERE status IN ('ready','approved','completed') ORDER BY completed_at DESC LIMIT ?",
                 (limit,),
             ).fetchall()
             out: List[Tuple[int, str, Dict[str, Any]]] = []

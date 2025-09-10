@@ -35,6 +35,24 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
         # Notify streaming generators to exit so the server can stop cleanly
         shutdown_event.set()
 
+    @app.on_event("startup")
+    async def _on_startup():
+        # On boot, (re)discover folders and enqueue analysis jobs if none exist
+        try:
+            from .organizer import FolderDiscovery  # local import to avoid cycles
+            fd = FolderDiscovery(organizer.source_dir, organizer.state_manager)
+            folders = fd.discover() or []
+            if folders:
+                # If there are no analyzing/ready/moving/completed/skipped jobs yet, prefetch all
+                counts = organizer.jobstore.counts()
+                total_existing = sum(counts.values())
+                if total_existing == 0:
+                    # Enqueue a scan job at the source root; worker will enqueue per-album analyze jobs with marker files
+                    organizer.jobstore.enqueue(organizer.source_dir, {"type": "scan", "root": str(organizer.source_dir)}, job_type="scan")
+        except Exception:
+            # Non-fatal: UI can still run
+            pass
+
 
     # Frontend is served by Vite in development. In production, we will mount the built assets
     # after declaring API routes so that /api/* is not intercepted by the static mount.
@@ -94,6 +112,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
                 except Exception:
                     folders = []
                 if folders:
+                    # Prefetch for changed source regardless of existing jobs; this ensures newly detected folders are queued
                     try:
                         organizer._prefetch_proposals(folders)
                     except Exception:
