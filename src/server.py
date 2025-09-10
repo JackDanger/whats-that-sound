@@ -122,7 +122,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
 
     @app.get("/api/ready")
     async def ready(limit: int = 20):
-        items = organizer.jobstore.fetch_completed(limit=limit)
+        items = organizer.jobstore.fetch_approved(limit=limit)
         return [{"path": fp, "name": Path(fp).name} for _, fp, _ in items]
 
     @app.get("/api/folder")
