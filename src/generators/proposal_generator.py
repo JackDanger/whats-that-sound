@@ -5,12 +5,10 @@ import re
 from pathlib import Path
 from typing import Dict, Optional
 from src.inference import InferenceProvider
-from rich.console import Console
 import re as _re
 import logging
 import os
 
-console = Console()
 
 
 class ProposalGenerator:

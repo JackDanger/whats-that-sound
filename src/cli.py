@@ -8,7 +8,6 @@ Boot the FastAPI server for the React UI with sensible defaults:
 
 import click
 from pathlib import Path
-from rich.console import Console
 import os
 import webbrowser
 import subprocess
@@ -21,7 +20,7 @@ from .inference import InferenceProvider
 from .server import create_app
 import uvicorn
 
-console = Console()
+ 
 
 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
@@ -136,7 +135,7 @@ def main_cli(
 
         # Start web server for UI
         url = f"http://{host}:{port}"
-        console.print(f"[green]Starting What's That Sound on {url}[/green]")
+        print(f"Starting What's That Sound on {url}")
         # If no built frontend found, hint about dev server
         dist_dir = project_root / "frontend" / "dist"
         if not dist_dir.exists():
@@ -194,7 +193,7 @@ def main_cli(
                 if vite_dev:
                     npm = shutil.which("npm")
                     if not npm:
-                        console.print("[yellow]npm not found on PATH; skipping Vite dev server. Install Node or run it manually.[/yellow]")
+                        print("npm not found on PATH; skipping Vite dev server. Install Node or run it manually.")
                     else:
                         frontend_dir = project_root / "frontend"
                         vite_cmd = [npm, "run", "dev"]

@@ -1,25 +1,24 @@
 """Main music organization orchestrator."""
 
 from pathlib import Path
-from rich.console import Console
+ 
 
 from .analyzers import DirectoryAnalyzer, StructureClassifier
 from .inference import InferenceProvider
 from .organizers import FileOrganizer
 from .processors import AlbumProcessor, CollectionProcessor
 from .trackers import ProgressTracker, StateManager
-from .ui import InteractiveUI
 from .jobs import SQLiteJobStore
 import multiprocessing
 import os
 from .worker import run_scan_worker, run_analyze_worker, run_move_worker
 import threading
 import time
-from rich.panel import Panel
+ 
 from pathlib import Path
 from dataclasses import dataclass
 
-console = Console()
+ 
 
 
 class MusicOrganizer:
@@ -37,7 +36,7 @@ class MusicOrganizer:
         self.target_dir = target_dir
 
         # Initialize inference provider (external or local server based)
-        console.print(f"[cyan]Configuring inference provider (model: {model_path.name})[/cyan]")
+        print(f"Configuring inference provider (model: {model_path.name})")
         self.inference = InferenceProvider()
 
         # Initialize components
@@ -51,7 +50,6 @@ class MusicOrganizer:
         self.file_organizer = FileOrganizer(self.target_dir)
         self.progress_tracker = ProgressTracker()
         self.state_manager = StateManager()
-        self.ui = InteractiveUI()
         self.jobstore = SQLiteJobStore()
 
         # Dedicated single-purpose worker processes

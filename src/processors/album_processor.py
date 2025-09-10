@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from typing import Dict
-from rich.console import Console
+ 
 
 from ..analyzers import DirectoryAnalyzer
 from ..organizers import FileOrganizer
@@ -10,7 +10,7 @@ from ..trackers import StateManager
 from ..ui import InteractiveUI
 from ..jobs import SQLiteJobStore
 
-console = Console()
+ 
 
 
 class AlbumProcessor:
