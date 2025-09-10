@@ -17,15 +17,8 @@ from typing import Any, Dict, List, Optional, Tuple
 DEFAULT_DB = os.getenv("WTS_DB_PATH", str(Path.cwd() / "whats_that_sound.db"))
 
 
-@dataclass
-class Job:
-    job_id: int
-    folder_path: str
-    metadata_json: str
-    user_feedback: Optional[str]
-    artist_hint: Optional[str]
-    status: str
-    job_type: str
+from .jobs.models import Job  # type: ignore
+from .jobs.migrations import ensure_schema, migrate_legacy_statuses  # type: ignore
 
 
 class SQLiteJobStore:
@@ -42,34 +35,7 @@ class SQLiteJobStore:
 
     def _ensure_schema(self) -> None:
         with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS jobs (
-                  id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  folder_path TEXT NOT NULL,
-                  metadata_json TEXT NOT NULL,
-                  user_feedback TEXT,
-                  artist_hint TEXT,
-                  status TEXT NOT NULL DEFAULT 'queued',
-                  job_type TEXT NOT NULL DEFAULT 'analyze',
-                  error TEXT,
-                  result_json TEXT,
-                  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                  started_at DATETIME,
-                  completed_at DATETIME
-                );
-                """
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);"
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_jobs_folder ON jobs(folder_path);"
-            )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_jobs_type ON jobs(job_type);"
-            )
+            ensure_schema(conn)
 
     def _migrate_legacy_statuses(self) -> None:
         """Normalize legacy status names to the current state machine.
@@ -79,9 +45,7 @@ class SQLiteJobStore:
         - failed      -> error
         """
         with self._connect() as conn:
-            conn.execute("UPDATE jobs SET status='analyzing' WHERE status='in_progress';")
-            conn.execute("UPDATE jobs SET status='ready' WHERE status='completed';")
-            conn.execute("UPDATE jobs SET status='error' WHERE status='failed';")
+            migrate_legacy_statuses(conn)
 
     def enqueue(self, folder: Path, metadata: Dict[str, Any], user_feedback: Optional[str] = None, artist_hint: Optional[str] = None, job_type: str = "analyze") -> int:
         with self._connect() as conn:
