@@ -21,6 +21,8 @@ function App() {
   const [showDebug, setShowDebug] = useState(false)
   const [error, setError] = useState('')
   const [toasts, setToasts] = useState<Toast[]>([])
+  const [proposalOverrides, setProposalOverrides] = useState<Record<string, Decision['proposal']>>({})
+  const STORAGE_KEY = 'wts_proposal_overrides'
 
   async function refreshPaths() {
     try {
@@ -89,9 +91,11 @@ function App() {
   async function postDecision(action: 'accept' | 'reconsider' | 'skip', feedback?: string, proposalOverride?: Decision['proposal']) {
     if (!selectedPath) return
     try {
-      await Api.postDecision({ path: selectedPath, action, proposal: action === 'accept' ? (proposalOverride || currentDecision?.proposal) : undefined, feedback })
+      const finalProposal = action === 'accept' ? (proposalOverride || proposalOverrides[selectedPath] || currentDecision?.proposal) : undefined
+      await Api.postDecision({ path: selectedPath, action, proposal: finalProposal, feedback })
       setReadyQueue((q) => q.filter((i) => i.path !== selectedPath))
       setCurrentDecision(null)
+      setProposalOverrides((m) => { const n = { ...m }; delete n[selectedPath]; return n })
       await loadNextReady()
       await refreshStatus()
       const id = Math.random().toString(36).slice(2)
@@ -142,6 +146,24 @@ function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [currentDecision])
 
+  // Load persisted overrides on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (raw) {
+        const data = JSON.parse(raw)
+        if (data && typeof data === 'object') setProposalOverrides(data)
+      }
+    } catch {}
+  }, [])
+
+  // Persist overrides whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(proposalOverrides))
+    } catch {}
+  }, [proposalOverrides])
+
   return (
       <div>
       <ErrorBanner message={error} onClose={() => setError('')} />
@@ -157,12 +179,17 @@ function App() {
           loading={loadingDecision}
           onReviewNext={() => loadNextReady()}
           onDecide={(action, feedback, proposalOverride) => postDecision(action, feedback, proposalOverride)}
+          initialOverrides={proposalOverrides[selectedPath]}
+          onProposalChange={(proposal) => { if (selectedPath) setProposalOverrides((m) => ({ ...m, [selectedPath]: proposal })) }}
         />
         <ReadyList ready={readyQueue} onSelect={(p) => loadDecision(p)} />
         {null}
       </div>
 
       <DebugJobsPanel open={showDebug} data={debugJobs} onClose={() => setShowDebug(false)} />
+      <div style={{ padding: 10, color: '#567', fontSize: 12 }}>
+        Shortcuts: <b>A</b> Accept, <b>R</b> Reconsider, <b>S</b> Skip
+      </div>
     </div>
   )
 }
