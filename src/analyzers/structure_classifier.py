@@ -40,6 +40,7 @@ class StructureClassifier:
 
     def _build_classification_prompt(self, structure_analysis: Dict) -> str:
         """Build prompt for LLM structure classification.
+        
 
         Args:
             structure_analysis: Directory structure analysis
@@ -108,25 +109,31 @@ Respond with ONLY the classification (one of the three options above)."""
         subdirs = structure_analysis["subdirectories"]
         direct_files = structure_analysis["direct_music_files"]
 
-        # Single album: direct audio present; not a multi-disc pattern
+        # Early case: single folder with files
         if direct_files > 0 and len(subdirs) <= 1:
             return "single_album"
 
-        # Multi-disc album: require >=2 disc-like subdirs, majority disc-like, and no direct files
-        if len(subdirs) >= 2 and len(subdirs) <= 6 and direct_files == 0:
-            disc_patterns = ["cd", "disc", "disk", "volume", "vol"]
-            disc_like_count = 0
-            for subdir in subdirs:
-                name_lower = subdir["name"].lower()
-                if any(pattern in name_lower for pattern in disc_patterns):
-                    disc_like_count += 1
+        disc_patterns = ["cd", "disc", "disk", "volume", "vol"]
+        disc_like = [s for s in subdirs if any(p in s["name"].lower() for p in disc_patterns)]
+        other_subdirs = [s for s in subdirs if s not in disc_like]
+        disc_like_count = len(disc_like)
+        disc_total_files = sum(int(s.get("music_files", 0) or 0) for s in disc_like)
 
-            if disc_like_count >= max(1, int(len(subdirs) * 0.5)):  # Majority look like discs
+        # Mixed case: both root files and disc-like subfolders exist
+        if direct_files > 0 and disc_like_count >= 1:
+            # Pick the larger grouping: root vs combined disc subfolders
+            if direct_files >= disc_total_files or disc_like_count < 2:
+                return "single_album"
+            # If discs clearly dominate and are majority of subdirs, treat as multi-disc
+            if disc_like_count >= max(2, int(0.5 * max(1, len(subdirs)))) and disc_total_files > direct_files:
                 return "multi_disc_album"
+            return "single_album"
 
-        # Artist collection: multiple subdirectories that don't look like discs
+        # No root files; decide between multi-disc and artist-collection
+        if disc_like_count >= max(2, int(0.5 * max(1, len(subdirs)))) and 2 <= len(subdirs) <= 8:
+            return "multi_disc_album"
+
         if len(subdirs) >= 2:
             return "artist_collection"
 
-        # Default to single album
         return "single_album"

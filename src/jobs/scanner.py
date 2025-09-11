@@ -71,19 +71,50 @@ def perform_scan(jobstore: SQLiteJobStore, base: Path) -> None:
             if jobstore.has_any_for_folder(artist_or_album):
                 continue
 
-            direct_music = _dir_has_music_direct(artist_or_album)
-            if direct_music:
-                jobstore.enqueue(artist_or_album, {"folder_name": artist_or_album.name}, job_type="analyze")
-                continue
-
-            # Inspect subdirectories
+            # Inspect subdirectories and direct music presence
             subdirs = [d for d in artist_or_album.iterdir() if d.is_dir() and d.name.lower() not in IGNORE_DIR_NAMES]
-            # Multi-disc heuristic (stricter): require >=2 disc-like subdirs, no direct music, majority disc-like
+            direct_music = _dir_has_music_direct(artist_or_album)
+            # Multi-disc heuristic (stricter + mixed case handling)
             if subdirs:
                 disc_like = [d for d in subdirs if _looks_like_disc_folder(d.name)]
-                if not direct_music and len(disc_like) >= 2 and len(disc_like) >= max(1, int(0.5 * len(subdirs))):
+                disc_like_count = len(disc_like)
+                if direct_music and disc_like_count >= 1:
+                    # If root has more tracks than combined disc subfolders, treat as single album
+                    root_tracks = 0
+                    try:
+                        for entry in artist_or_album.iterdir():
+                            if entry.is_file() and entry.suffix.lower() in MetadataExtractor.SUPPORTED_FORMATS:
+                                root_tracks += 1
+                    except Exception:
+                        pass
+                    disc_tracks = 0
+                    for d in disc_like:
+                        try:
+                            for _r, _ds, files in os.walk(d, topdown=True, onerror=lambda e: None):
+                                for name in files:
+                                    if Path(name).suffix.lower() in MetadataExtractor.SUPPORTED_FORMATS:
+                                        disc_tracks += 1
+                        except Exception:
+                            continue
+                    # If disc subfolders clearly dominate and there are at least 2 disc-like subdirs,
+                    # enqueue each disc folder (not the parent) to capture all files explicitly
+                    if disc_like_count >= 2 and disc_tracks > root_tracks and disc_like_count >= max(2, int(0.5 * len(subdirs))):
+                        for d in sorted(disc_like):
+                            if jobstore.has_any_for_folder(d):
+                                continue
+                            jobstore.enqueue(d, {"folder_name": d.name}, artist_hint=artist_or_album.name, job_type="analyze")
+                        continue
+                    # Otherwise favor the parent as a single album (root tracks dominate or not enough disc-like subdirs)
                     jobstore.enqueue(artist_or_album, {"folder_name": artist_or_album.name}, job_type="analyze")
                     continue
+                elif not direct_music and disc_like_count >= 2 and disc_like_count >= max(1, int(0.5 * len(subdirs))):
+                    jobstore.enqueue(artist_or_album, {"folder_name": artist_or_album.name}, job_type="analyze")
+                    continue
+
+            # If there is direct music and no disc-like pattern, treat as single album at parent
+            if direct_music and (not subdirs or all(not _looks_like_disc_folder(d.name) for d in subdirs)):
+                jobstore.enqueue(artist_or_album, {"folder_name": artist_or_album.name}, job_type="analyze")
+                continue
 
             # Artist collection heuristic: enqueue each subdir that contains music
             enqueued_any = False
