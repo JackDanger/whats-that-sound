@@ -15,7 +15,7 @@ from typing import Optional
 
 from .jobs import SQLiteJobStore
 from .generators.proposal_generator import ProposalGenerator
-from .inference import InferenceProvider
+from .inference import build_provider_from_env as _build_provider
 from .analyzers import DirectoryAnalyzer, StructureClassifier
 import logging
 
@@ -69,7 +69,7 @@ def run_analyze_worker(poll_seconds: int = 10):
     if log_dir:
         handler = logging.FileHandler(os.path.join(log_dir, "analyze_worker.log"), encoding="utf-8")
         logging.basicConfig(level=logging.INFO, handlers=[handler])
-    provider = InferenceProvider()
+    provider = _build_provider()
     generator = ProposalGenerator(provider)
     analyzer = DirectoryAnalyzer()
     classifier = StructureClassifier(provider)

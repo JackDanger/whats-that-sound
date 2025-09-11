@@ -111,6 +111,7 @@ class GeminiTextProvider(TextProvider):
 
 class LlamaTextProvider(TextProvider):
     def __init__(self, base_url: Optional[str] = None, api_key: Optional[str] = None):
+        print(f"LlamaTextProvider init: base_url: {base_url}, api_key: {api_key}")
         self.base_url = base_url or os.getenv("LLAMA_API_BASE", "http://localhost:11434/v1")
         self.api_key = api_key or os.getenv("LLAMA_API_KEY")
 
@@ -158,13 +159,6 @@ class LlamaTextProvider(TextProvider):
 
 
 class InferenceProvider:
-    """Facade that routes prompts to a configured provider and model.
-
-    Usage:
-        inference = InferenceProvider(provider="openai", model="gpt-5")
-        text = inference.generate("hello")
-    """
-
     def __init__(
         self,
         provider: Optional[str] = None,
@@ -194,4 +188,37 @@ class InferenceProvider:
     def generate(self, prompt: str) -> str:
         return self.provider.generate(prompt, self.model)
 
+
+
+def build_provider_from_env() -> InferenceProvider:
+    """Factory to build an InferenceProvider from env configuration.
+
+    Honors WTS_INFERENCE_URL/LLAMA_API_BASE for llama, or WTS_MODEL for
+    auto-selecting OpenAI/Gemini/Llama based on prefix.
+    """
+    inference_url = os.getenv("WTS_INFERENCE_URL") or os.getenv("LLAMA_API_BASE")
+    model = os.getenv("WTS_MODEL")
+
+    if inference_url:
+        os.environ["LLAMA_API_BASE"] = inference_url
+        return InferenceProvider(provider="llama", model="", llama_base_url=inference_url)
+
+    if model:
+        normalized = model.lower()
+        if normalized.startswith("gpt") or normalized.startswith("o"):
+            token = os.getenv("OPENAI_API_TOKEN") or os.getenv("OPENAI_API_KEY")
+            if not token:
+                raise RuntimeError("OPENAI_API_TOKEN is required for OpenAI models")
+            return InferenceProvider(provider="openai", model=model, openai_api_key=token)
+        if normalized.startswith("gemini"):
+            token = os.getenv("GEMINI_API_TOKEN") or os.getenv("GOOGLE_API_KEY")
+            if not token:
+                raise RuntimeError("GEMINI_API_TOKEN is required for Gemini models")
+            return InferenceProvider(provider="gemini", model=model, gemini_api_key=token)
+        return InferenceProvider(provider="llama", model=normalized)
+
+    # Default local llama server
+    inference_url = "http://localhost:11434/v1"
+    os.environ["LLAMA_API_BASE"] = inference_url
+    return InferenceProvider(provider="llama", model="", llama_base_url=inference_url)
 

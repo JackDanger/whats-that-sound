@@ -51,7 +51,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
     # Staged (unapplied) path changes
     staged_source: Optional[Path] = None
     staged_target: Optional[Path] = None
-    
+
 
 
     # Frontend is served by Vite in development. In production, we will mount the built assets
@@ -179,7 +179,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
     async def status_event_stream(request: Request):
         while True:
             if shutdown_event.is_set() or await request.is_disconnected():
-                break
+                    break
             counts = organizer.jobstore.counts()
             stats = organizer.progress_tracker.get_stats()
             data = {
@@ -271,7 +271,7 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
 def app_factory():
     """Build FastAPI app from environment settings. Used by uvicorn with --reload."""
     from pathlib import Path as _P
-    from .inference import InferenceProvider as _Inf
+    from .inference import build_provider_from_env as _build_provider
 
     project_root = _P(__file__).resolve().parent.parent
     # Resolve dirs
@@ -288,33 +288,8 @@ def app_factory():
         else:
             target_dir = str(_P.home() / "Music" / "Organized")
 
-    # Inference from env
-    model = os.getenv("WTS_MODEL")
-    inference_url = os.getenv("WTS_INFERENCE_URL") or os.getenv("LLAMA_API_BASE")
-
-    # Create provider
-    if inference_url:
-        os.environ["LLAMA_API_BASE"] = inference_url
-        provider = _Inf(provider="llama", model="", llama_base_url=inference_url)
-    elif model:
-        normalized = model.lower()
-        if normalized.startswith("gpt") or normalized.startswith("o"):
-            token = os.getenv("OPENAI_API_TOKEN") or os.getenv("OPENAI_API_KEY")
-            if not token:
-                raise RuntimeError("OPENAI_API_TOKEN is required for OpenAI models")
-            provider = _Inf(provider="openai", model=model, openai_api_key=token)
-        elif normalized.startswith("gemini"):
-            token = os.getenv("GEMINI_API_TOKEN") or os.getenv("GOOGLE_API_KEY")
-            if not token:
-                raise RuntimeError("GEMINI_API_TOKEN is required for Gemini models")
-            provider = _Inf(provider="gemini", model=model, gemini_api_key=token)
-        else:
-            provider = _Inf(provider="llama", model=normalized)
-    else:
-        # Default local llama server
-        inference_url = "http://localhost:11434/v1"
-        os.environ["LLAMA_API_BASE"] = inference_url
-        provider = _Inf(provider="llama", model="", llama_base_url=inference_url)
+    # Inference from env (centralized)
+    provider = _build_provider()
 
     # Build organizer
     src_path = _P(source_dir)
