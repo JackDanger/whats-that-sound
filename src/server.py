@@ -158,12 +158,14 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
             return {"ok": True}
         elif action == "reconsider":
             fb = payload.get("feedback")
-            metadata = organizer.directory_analyzer.extract_folder_metadata(folder)
-            # Re-enqueue or transition to analyzing
-            if not organizer.jobstore.has_any_for_folder(folder, statuses=["analyzing"]):
-                organizer.jobstore.enqueue(folder, metadata, user_feedback=fb)
-            else:
-                organizer.jobstore.update_latest_status_for_folder(folder, ["ready", "skipped"], "analyzing")
+            user_classification = payload.get("user_classification")  # optional override: single_album|multi_disc_album|artist_collection
+            # If the user is on a disc subfolder and indicates multi-disc, requeue the parent instead
+            parent = folder.parent if user_classification == "multi_disc_album" else folder
+            metadata = organizer.directory_analyzer.extract_folder_metadata(parent)
+            if user_classification:
+                metadata["user_classification"] = user_classification
+            # Reset existing job back to queued to re-run with latest logic/feedback
+            organizer.jobstore.requeue_for_reconsideration(parent, metadata, user_feedback=fb)
             return {"ok": True}
         elif action == "skip":
             organizer.jobstore.update_latest_status_for_folder(folder, ["ready"], "skipped")

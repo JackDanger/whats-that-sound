@@ -138,6 +138,7 @@ function App() {
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || (target as any).isContentEditable)) return
       const key = e.key.toLowerCase()
+      if (e.metaKey) return
       if (key === 'a') { postDecision('accept'); e.preventDefault() }
       if (key === 'r') { const fb = window.prompt('Feedback?'); if (fb !== null) postDecision('reconsider', fb); e.preventDefault() }
       if (key === 's') { postDecision('skip'); e.preventDefault() }

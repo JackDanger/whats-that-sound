@@ -16,6 +16,8 @@ export function DecisionPanel({ decision, selectedPath, readyAvailable, loading,
   const [artist, setArtist] = useState<string>('')
   const [album, setAlbum] = useState<string>('')
   const [year, setYear] = useState<string>('')
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedbackText, setFeedbackText] = useState('')
 
   useEffect(() => {
     if (decision) {
@@ -23,10 +25,14 @@ export function DecisionPanel({ decision, selectedPath, readyAvailable, loading,
       setArtist(src.artist || '')
       setAlbum(src.album || '')
       setYear(String(src.year || ''))
+      setFeedbackOpen(false)
+      setFeedbackText('')
     } else {
       setArtist('')
       setAlbum('')
       setYear('')
+      setFeedbackOpen(false)
+      setFeedbackText('')
     }
   }, [decision, initialOverrides])
 
@@ -180,11 +186,28 @@ export function DecisionPanel({ decision, selectedPath, readyAvailable, loading,
           <>
             <button onClick={() => onDecide('accept', undefined, buildUpdatedProposal())}>Accept (A)</button>
             <button onClick={() => onDecide('accept', undefined, buildUpdatedProposal())}>Accept & Next</button>
-            <button onClick={() => {
-              const fb = window.prompt('Feedback?')
-              if (fb !== null) onDecide('reconsider', fb)
-            }}>Reconsider (R)</button>
+            <button onClick={() => setFeedbackOpen((v) => !v)}>{feedbackOpen ? 'Cancel' : 'Refine with feedback (R)'}</button>
             <button onClick={() => onDecide('skip')}>Skip (S)</button>
+            {feedbackOpen && (
+              <div style={{ marginTop: 8, borderTop: '1px solid #eee', paddingTop: 8 }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>Tell us what to fix</div>
+                <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>Examples: correct artist/album/year, note it is a compilation, or add naming hints.</div>
+                <textarea
+                  value={feedbackText}
+                  onChange={(e) => setFeedbackText(e.target.value)}
+                  rows={4}
+                  style={{ width: '100%', fontFamily: 'inherit' }}
+                  placeholder="e.g. Artist is Weezer; Album is Raditude (Deluxe); Year is 2009; Use multi-disc layout"
+                />
+                <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button disabled={!feedbackText.trim()} onClick={() => onDecide('reconsider', feedbackText.trim())}>Re-analyze</button>
+                  <button
+                    title="Treat parent as a multi-disc album"
+                    onClick={() => onDecide('reconsider', feedbackText.trim() || undefined)}
+                  >Re-analyze parent as multi-disc</button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

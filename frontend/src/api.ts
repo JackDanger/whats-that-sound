@@ -26,7 +26,7 @@ export const Api = {
   getDecision(path: string): Promise<Decision> {
     return fetchJSON<Decision>('/api/folder?path=' + encodeURIComponent(path))
   },
-  postDecision(body: { path: string; action: 'accept' | 'reconsider' | 'skip'; proposal?: any; feedback?: string }): Promise<any> {
+  postDecision(body: { path: string; action: 'accept' | 'reconsider' | 'skip'; proposal?: any; feedback?: string; user_classification?: 'single_album' | 'multi_disc_album' | 'artist_collection' }): Promise<any> {
     return fetchJSON('/api/decision', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

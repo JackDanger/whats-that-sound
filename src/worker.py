@@ -85,7 +85,13 @@ def run_analyze_worker(poll_seconds: int = 10):
             from pathlib import Path as _P
             folder_path = _P(claimed.folder_path)
             structure = analyzer.analyze_directory_structure(folder_path)
-            classification = classifier.classify_directory_structure(structure)
+            # Allow user override of classification via metadata
+            job_meta = json.loads(claimed.metadata_json) if claimed.metadata_json else {}
+            override = (job_meta or {}).get("user_classification")
+            if override in ("single_album", "multi_disc_album", "artist_collection"):
+                classification = override
+            else:
+                classification = classifier.classify_directory_structure(structure)
             if classification == "artist_collection":
                 # Fan out: enqueue each album subdir with artist hint, then skip this job
                 for sub in structure.get("subdirectories", []):

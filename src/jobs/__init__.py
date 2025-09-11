@@ -201,6 +201,36 @@ class SQLiteJobStore:
 
     # No legacy aliases
 
+    def requeue_for_reconsideration(self, folder: Path, metadata: Dict[str, Any], user_feedback: Optional[str] = None) -> Optional[int]:
+        """Reset the latest job for a folder back to queued with updated metadata/feedback.
+
+        Returns the job id if updated, else None.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM jobs WHERE folder_path=? ORDER BY id DESC LIMIT 1",
+                (str(folder),),
+            ).fetchone()
+            if not row:
+                return None
+            job_id = int(row[0])
+            conn.execute(
+                """
+                UPDATE jobs
+                SET status='queued',
+                    metadata_json=?,
+                    user_feedback=?,
+                    result_json=NULL,
+                    error=NULL,
+                    updated_at=CURRENT_TIMESTAMP,
+                    started_at=NULL,
+                    completed_at=NULL
+                WHERE id=?
+                """,
+                (json.dumps(metadata), user_feedback, job_id),
+            )
+            return job_id
+
     def update_latest_status_for_folder(self, folder: Path, from_statuses: Optional[List[str]], to_status: str) -> Optional[int]:
         """Update the most recent job for a folder from one of the given from_statuses to to_status.
 
