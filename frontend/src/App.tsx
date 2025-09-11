@@ -93,10 +93,11 @@ function App() {
     try {
       const finalProposal = action === 'accept' ? (proposalOverride || proposalOverrides[selectedPath] || currentDecision?.proposal) : undefined
       await Api.postDecision({ path: selectedPath, action, proposal: finalProposal, feedback })
-      setReadyQueue((q) => q.filter((i) => i.path !== selectedPath))
+      const nextList = readyQueue.filter((i) => i.path !== selectedPath)
+      setReadyQueue(nextList)
       setCurrentDecision(null)
       setProposalOverrides((m) => { const n = { ...m }; delete n[selectedPath]; return n })
-      await loadNextReady()
+      await loadNextReady(nextList)
       await refreshStatus()
       const id = Math.random().toString(36).slice(2)
       const message = action === 'accept' ? 'Accepted proposal' : action === 'reconsider' ? 'Requested reconsideration' : 'Skipped folder'

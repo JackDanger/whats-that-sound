@@ -12,6 +12,8 @@ dependencies = [
     "httpx>=0.27",
     "websockets>=12.0",
     "pytest>=8.4.2",
+    "watchfiles>=0.22",
+    "honcho>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -20,6 +22,7 @@ dev = [
     "pytest-cov>=4.0",
     "pytest-mock>=3.0",
     "black>=23.0",
+    "honcho>=1.1.0",
 ]
 cuda = [
     "llama-cpp-python>=0.2.50",
@@ -33,4 +36,4 @@ build-backend = "hatchling.build"
 packages = ["src"]
 
 [project.scripts]
-whats-that-sound = "src.cli:main"
+wts-worker = "src.worker:_main"

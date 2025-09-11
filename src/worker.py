@@ -7,10 +7,10 @@ threads within the process for I/O-bound inference.
 
 from __future__ import annotations
 
+import argparse
 import os
-import threading
+import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 from .jobs import SQLiteJobStore
@@ -18,7 +18,6 @@ from .generators.proposal_generator import ProposalGenerator
 from .inference import InferenceProvider
 from .analyzers import DirectoryAnalyzer, StructureClassifier
 import logging
-import os
 
 
 def _process_one(jobstore: SQLiteJobStore, generator: ProposalGenerator, job_id: int, folder_path: str, metadata_json: str, user_feedback: Optional[str], artist_hint: Optional[str], job_type: str):
@@ -143,8 +142,48 @@ def run_move_worker(poll_seconds: int = 10):
             jobstore.update_latest_status_for_folder(_P(claimed.folder_path), ["moving"], "error")
 
 
+def _main():
+    parser = argparse.ArgumentParser(description="Background workers for What's That Sound")
+    sub = parser.add_subparsers(dest="role", required=True)
+
+    p_scan = sub.add_parser("scan", help="Run scanner worker")
+    p_scan.add_argument("--poll-seconds", type=int, default=300)
+    p_scan.add_argument("--reload", action="store_true", help="Restart on code changes (dev)")
+
+    p_an = sub.add_parser("analyze", help="Run analyzer worker")
+    p_an.add_argument("--poll-seconds", type=int, default=10)
+    p_an.add_argument("--reload", action="store_true", help="Restart on code changes (dev)")
+
+    p_mv = sub.add_parser("move", help="Run mover worker")
+    p_mv.add_argument("--poll-seconds", type=int, default=10)
+    p_mv.add_argument("--reload", action="store_true", help="Restart on code changes (dev)")
+
+    args = parser.parse_args()
+
+    def start_once():
+        if args.role == "scan":
+            run_scan_worker(poll_seconds=args.poll_seconds)
+        elif args.role == "analyze":
+            run_analyze_worker(poll_seconds=args.poll_seconds)
+        elif args.role == "move":
+            run_move_worker(poll_seconds=args.poll_seconds)
+
+    if getattr(args, "reload", False):
+        try:
+            from watchfiles import run_process
+            # Watch the Python source tree and restart this role on changes.
+            src_dir = os.path.dirname(os.path.dirname(__file__))
+            # Re-run without --reload in child process to avoid recursion
+            cmd = [sys.executable, "-m", "src.worker", args.role, "--poll-seconds", str(args.poll_seconds)]
+            run_process(src_dir, cmd)
+            return
+        except Exception:
+            # Fallback: just run once if watchfiles is unavailable
+            pass
+    start_once()
+
+
 if __name__ == "__main__":
-    # For manual debugging, run analyze worker
-    run_analyze_worker()
+    _main()
 
 

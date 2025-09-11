@@ -267,3 +267,63 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
     return app
 
 
+
+def app_factory():
+    """Build FastAPI app from environment settings. Used by uvicorn with --reload."""
+    from pathlib import Path as _P
+    from .inference import InferenceProvider as _Inf
+
+    project_root = _P(__file__).resolve().parent.parent
+    # Resolve dirs
+    source_dir = os.getenv("WTS_SOURCE_DIR")
+    target_dir = os.getenv("WTS_TARGET_DIR")
+    if not source_dir:
+        if (project_root / "tmp-src").exists():
+            source_dir = str(project_root / "tmp-src")
+        else:
+            source_dir = str(_P.home() / "Music" / "Unsorted")
+    if not target_dir:
+        if (project_root / "tmp-dst").exists():
+            target_dir = str(project_root / "tmp-dst")
+        else:
+            target_dir = str(_P.home() / "Music" / "Organized")
+
+    # Inference from env
+    model = os.getenv("WTS_MODEL")
+    inference_url = os.getenv("WTS_INFERENCE_URL") or os.getenv("LLAMA_API_BASE")
+
+    # Create provider
+    if inference_url:
+        os.environ["LLAMA_API_BASE"] = inference_url
+        provider = _Inf(provider="llama", model="", llama_base_url=inference_url)
+    elif model:
+        normalized = model.lower()
+        if normalized.startswith("gpt") or normalized.startswith("o"):
+            token = os.getenv("OPENAI_API_TOKEN") or os.getenv("OPENAI_API_KEY")
+            if not token:
+                raise RuntimeError("OPENAI_API_TOKEN is required for OpenAI models")
+            provider = _Inf(provider="openai", model=model, openai_api_key=token)
+        elif normalized.startswith("gemini"):
+            token = os.getenv("GEMINI_API_TOKEN") or os.getenv("GOOGLE_API_KEY")
+            if not token:
+                raise RuntimeError("GEMINI_API_TOKEN is required for Gemini models")
+            provider = _Inf(provider="gemini", model=model, gemini_api_key=token)
+        else:
+            provider = _Inf(provider="llama", model=normalized)
+    else:
+        # Default local llama server
+        inference_url = "http://localhost:11434/v1"
+        os.environ["LLAMA_API_BASE"] = inference_url
+        provider = _Inf(provider="llama", model="", llama_base_url=inference_url)
+
+    # Build organizer
+    src_path = _P(source_dir)
+    dst_path = _P(target_dir)
+    dst_path.mkdir(parents=True, exist_ok=True)
+    src_path.mkdir(parents=True, exist_ok=True)
+
+    organizer = MusicOrganizer(_P("model"), src_path, dst_path)
+    organizer.inference = provider
+    organizer.structure_classifier.inference = provider
+
+    return create_app(organizer)
