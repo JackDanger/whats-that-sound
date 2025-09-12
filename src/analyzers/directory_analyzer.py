@@ -78,6 +78,7 @@ class DirectoryAnalyzer:
                     "path": str(item),
                     "depth": depth + 1,
                     "music_files": 0,
+                    "music_basenames": [],
                     "subdirectories": [],
                 }
 
@@ -85,15 +86,20 @@ class DirectoryAnalyzer:
                 try:
                     # Count recursively, case-insensitive by suffix check
                     count = 0
+                    basenames = set()
                     for p in item.rglob("*"):
                         try:
                             if p.is_file() and p.suffix.lower() in MetadataExtractor.SUPPORTED_FORMATS:
                                 count += 1
+                                basenames.add(p.name.lower())
                         except (PermissionError, OSError):
                             continue
                     subdir_info["music_files"] = count
+                    # Store sorted list for stable output/testing; lowercased for case-insensitive distinctness
+                    subdir_info["music_basenames"] = sorted(basenames)
                 except Exception:
                     subdir_info["music_files"] = 0
+                    subdir_info["music_basenames"] = []
 
                 # Count subdirectories
                 try:

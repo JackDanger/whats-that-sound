@@ -1,6 +1,7 @@
 """Structure classification for music directories."""
 
 from typing import Dict
+import re
 from src.inference import InferenceProvider
 import logging
 
@@ -113,26 +114,28 @@ Respond with ONLY the classification (one of the three options above)."""
         if direct_files > 0 and len(subdirs) <= 1:
             return "single_album"
 
-        disc_patterns = ["cd", "disc", "disk", "volume", "vol"]
-        disc_like = [s for s in subdirs if any(p in s["name"].lower() for p in disc_patterns)]
-        other_subdirs = [s for s in subdirs if s not in disc_like]
-        disc_like_count = len(disc_like)
-        disc_total_files = sum(int(s.get("music_files", 0) or 0) for s in disc_like)
+        # Name-agnostic, count-based logic:
+        # If combined distinct audio filenames across immediate subdirs exceeds the number of direct files,
+        # treat as multi-disc. If root has no files and there are at least two subdirs with any audio, also treat as multi-disc.
+        subdir_distinct_names = set()
+        subdir_any_files = 0
+        for s in subdirs:
+            mf = int(s.get("music_files", 0) or 0)
+            if mf > 0:
+                subdir_any_files += 1
+            for bn in (s.get("music_basenames", []) or []):
+                subdir_distinct_names.add(str(bn).lower())
+        combined_distinct = len(subdir_distinct_names)
 
-        # Mixed case: both root files and disc-like subfolders exist
-        if direct_files > 0 and disc_like_count >= 1:
-            # Pick the larger grouping: root vs combined disc subfolders
-            if direct_files >= disc_total_files or disc_like_count < 2:
-                return "single_album"
-            # If discs clearly dominate and are majority of subdirs, treat as multi-disc
-            if disc_like_count >= max(2, int(0.5 * max(1, len(subdirs)))) and disc_total_files > direct_files:
-                return "multi_disc_album"
-            return "single_album"
-
-        # No root files; decide between multi-disc and artist-collection
-        if disc_like_count >= max(2, int(0.5 * max(1, len(subdirs)))) and 2 <= len(subdirs) <= 8:
+        # Prefer multi-disc when subdir distinct tracks dominate direct root files
+        if len(subdirs) >= 2 and combined_distinct > direct_files:
             return "multi_disc_album"
 
+        # No root files but multiple subdirs with audio: multi-disc
+        if direct_files == 0 and subdir_any_files >= 2:
+            return "multi_disc_album"
+
+        # Otherwise: artist collection if multiple subdirs, else single album
         if len(subdirs) >= 2:
             return "artist_collection"
 

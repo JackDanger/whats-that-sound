@@ -1,9 +1,14 @@
 from pathlib import Path
 import os
 
+from logging import logger
+
 from ..metadata import MetadataExtractor  # type: ignore
 
 from . import SQLiteJobStore  # type: ignore circular import
+
+
+logger = logging.getLogger("wts.jobs.scanner")
 
 
 def enqueue_scan_jobs(jobstore: SQLiteJobStore, root: Path) -> None:
@@ -67,8 +72,10 @@ def perform_scan(jobstore: SQLiteJobStore, base: Path) -> None:
     """
     for artist_or_album in sorted([p for p in base.iterdir() if p.is_dir()]):
         try:
+            logger.info(f"Scanning {artist_or_album}")
             # Already tracked?
             if jobstore.has_any_for_folder(artist_or_album):
+                logger.info(f"Already tracked {artist_or_album}")
                 continue
 
             # Inspect subdirectories and direct music presence

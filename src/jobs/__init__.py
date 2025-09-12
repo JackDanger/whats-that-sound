@@ -117,11 +117,11 @@ class SQLiteJobStore:
                 (json.dumps(result), job_id),
             )
 
-    def fail(self, job_id: int, error: str) -> None:
+    def fail(self, job_id: int, error: Exception) -> None:
         with self._connect() as conn:
             conn.execute(
                 "UPDATE jobs SET status='error', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (error, job_id),
+                (str(error) or error.__class__.__name__, job_id),
             )
 
     def get_result(self, folder: Path) -> Optional[Dict[str, Any]]:

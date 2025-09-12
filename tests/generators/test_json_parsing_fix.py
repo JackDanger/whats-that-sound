@@ -63,7 +63,7 @@ class TestJsonParsingFix:
         }
 
         # Test with artist hint
-        proposal = generator.get_llm_proposal(metadata, artist_hint="Ruby My Dear")
+        proposal = generator.get_llm_proposal(folder_path="test_folder", metadata=metadata, artist_hint="Ruby My Dear")
 
         # Verify the proposal was parsed correctly
         assert proposal["artist"] == "Ruby My Dear"
@@ -97,7 +97,7 @@ class TestJsonParsingFix:
             "analysis": {},
         }
 
-        proposal = generator.get_llm_proposal(metadata)
+        proposal = generator.get_llm_proposal(folder_path="test_folder", metadata=metadata)
 
         # Should parse correctly despite special characters
         assert proposal["artist"] == 'Artist with "quotes" and {braces}'
@@ -137,7 +137,7 @@ class TestJsonParsingFix:
             },
         }
 
-        proposal = generator.get_llm_proposal(metadata)
+        proposal = generator.get_llm_proposal(folder_path="test_folder", metadata=metadata)
 
         # Should extract JSON correctly despite extra text
         assert proposal["artist"] == "Ruby My Dear"
@@ -163,7 +163,7 @@ class TestJsonParsingFix:
         }
 
         # Test with artist hint
-        proposal = generator.get_llm_proposal(metadata, artist_hint="Ruby My Dear")
+        proposal = generator.get_llm_proposal(folder_path="test_folder", metadata=metadata, artist_hint="Ruby My Dear")
 
         # Should use fallback which prioritizes artist_hint and detected metadata
         assert proposal["artist"] == "Ruby My Dear"  # From artist_hint

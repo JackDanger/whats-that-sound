@@ -3,8 +3,8 @@
 from pathlib import Path
  
 
-from .analyzers import DirectoryAnalyzer, StructureClassifier
 from .inference import InferenceProvider
+from .analyzers import DirectoryAnalyzer, StructureClassifier
 from .organizers import FileOrganizer
 from .trackers import ProgressTracker, StateManager
 from .jobs import SQLiteJobStore
@@ -19,7 +19,7 @@ from pathlib import Path
 class MusicOrganizer:
     """Orchestrates the music organization process using specialized components."""
 
-    def __init__(self, model_path: Path, source_dir: Path, target_dir: Path):
+    def __init__(self, inference: InferenceProvider, model_path: Path, source_dir: Path, target_dir: Path):
         """Initialize the music organizer.
 
         Args:
@@ -32,7 +32,7 @@ class MusicOrganizer:
 
         # Initialize inference provider (external or local server based)
         logger.info(f"Configuring inference provider (model: {model_path.name})")
-        self.inference = InferenceProvider()
+        self.inference = inference
 
         # Initialize components
         self._initialize_components()

@@ -89,7 +89,7 @@ def test_error_state(tmp_path: Path):
     folder.mkdir()
     job_id = store.enqueue(folder, {"meta": 7})
     store.claim_queued_for_analysis()
-    store.fail(job_id, "synthetic error")
+    store.fail(job_id, Exception("synthetic error"))
     counts = store.counts()
     assert counts.get("error", 0) == 1
 

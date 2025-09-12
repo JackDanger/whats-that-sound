@@ -112,7 +112,17 @@ function App() {
     es.onmessage = (e) => {
       try {
         const s = JSON.parse(e.data)
-        setStatus((prev) => (prev ? { ...prev, ...s } : { counts: s.counts, processed: s.processed, total: s.total, ready: [] }))
+        setStatus((prev) => (prev ?
+          { ...prev, counts: s.counts, processed: s.processed, total: s.total } :
+          { counts: s.counts, processed: s.processed, total: s.total, ready: [] }))
+        if (s.debug && s.debug.recent) {
+          setDebugJobs((prev) => {
+            const prevCounts = prev?.counts || {}
+            // Rebuild counts from current status counts to stay consistent
+            const nextCounts = s.counts || prevCounts
+            return { counts: nextCounts, recent: s.debug.recent }
+          })
+        }
       } catch {}
     }
     es.onerror = () => {

@@ -15,7 +15,7 @@ from typing import Optional
 
 from .jobs import SQLiteJobStore
 from .generators.proposal_generator import ProposalGenerator
-from .inference import build_provider_from_env as _build_provider
+from .inference import build_provider_from_env
 from .analyzers import DirectoryAnalyzer, StructureClassifier
 import logging
 
@@ -42,7 +42,7 @@ def _process_one(jobstore: SQLiteJobStore, generator: ProposalGenerator, job_id:
             # Mark job as ready (formerly 'approved')
             jobstore.approve(job_id, result)
     except Exception as e:
-        jobstore.fail(job_id, str(e))
+        jobstore.fail(job_id, e)
         raise e
 
 
@@ -69,7 +69,7 @@ def run_analyze_worker(poll_seconds: int = 10):
     if log_dir:
         handler = logging.FileHandler(os.path.join(log_dir, "analyze_worker.log"), encoding="utf-8")
         logging.basicConfig(level=logging.INFO, handlers=[handler])
-    provider = _build_provider()
+    provider = build_provider_from_env()
     generator = ProposalGenerator(provider)
     analyzer = DirectoryAnalyzer()
     classifier = StructureClassifier(provider)
@@ -116,8 +116,8 @@ def run_analyze_worker(poll_seconds: int = 10):
                 # Unknown classification; skip to avoid bad proposals
                 jobstore.update_latest_status_for_folder(folder_path, ["analyzing"], "skipped")
         except Exception as e:
-            jobstore.fail(claimed.job_id, str(e))
-
+            jobstore.fail(claimed.job_id, e)
+            raise e
 
 def run_move_worker(poll_seconds: int = 10):
     jobstore = SQLiteJobStore()
@@ -139,8 +139,10 @@ def run_move_worker(poll_seconds: int = 10):
             organizer.organize_folder(_P(claimed.folder_path), proposal)
             jobstore.update_latest_status_for_folder(_P(claimed.folder_path), ["moving"], "completed")
         except Exception as e:
-            jobstore.update_latest_status_for_folder(_P(claimed.folder_path), ["moving"], "error")
-
+            job_id = jobstore.update_latest_status_for_folder(_P(claimed.folder_path), ["moving"], "error")
+            if job_id:
+                jobstore.fail(job_id, e)
+            raise e
 
 def _main():
     parser = argparse.ArgumentParser(description="Background workers for What's That Sound")

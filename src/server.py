@@ -177,18 +177,23 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
 
     # Shared SSE generator for status/events
     async def status_event_stream(request: Request):
-        while True:
-            if shutdown_event.is_set() or await request.is_disconnected():
-                    break
+        while not shutdown_event.is_set():
             counts = organizer.jobstore.counts()
             stats = organizer.progress_tracker.get_stats()
+            # Include a small rolling window of recent jobs for live debug panel
+            debug_recent = organizer.jobstore.recent_jobs(limit=25)
             data = {
                 "counts": counts,
                 "processed": stats.get("total_processed", 0),
                 "total": len(list(organizer.source_dir.iterdir())),
+                "debug": {"recent": debug_recent},
             }
             yield f"data: {json.dumps(data)}\n\n"
-            await asyncio.sleep(1)
+            # Wake up promptly when shutting down instead of waiting the full interval
+            try:
+                await asyncio.wait_for(shutdown_event.wait(), timeout=1.0)
+            except asyncio.TimeoutError:
+                pass
 
     @app.get("/api/events")
     async def events(request: Request):
@@ -270,10 +275,10 @@ def create_app(organizer: MusicOrganizer) -> FastAPI:
 
 def app_factory():
     """Build FastAPI app from environment settings. Used by uvicorn with --reload."""
-    from pathlib import Path as _P
-    from .inference import build_provider_from_env as _build_provider
+    from pathlib import Path
+    from .inference import build_provider_from_env
 
-    project_root = _P(__file__).resolve().parent.parent
+    project_root = Path(__file__).resolve().parent.parent
     # Resolve dirs
     source_dir = os.getenv("WTS_SOURCE_DIR")
     target_dir = os.getenv("WTS_TARGET_DIR")
@@ -281,24 +286,22 @@ def app_factory():
         if (project_root / "tmp-src").exists():
             source_dir = str(project_root / "tmp-src")
         else:
-            source_dir = str(_P.home() / "Music" / "Unsorted")
+            source_dir = str(Path.home() / "Music" / "Unsorted")
     if not target_dir:
         if (project_root / "tmp-dst").exists():
             target_dir = str(project_root / "tmp-dst")
         else:
-            target_dir = str(_P.home() / "Music" / "Organized")
+            target_dir = str(Path.home() / "Music" / "Organized")
 
     # Inference from env (centralized)
-    provider = _build_provider()
+    inference = build_provider_from_env()
 
     # Build organizer
-    src_path = _P(source_dir)
-    dst_path = _P(target_dir)
+    src_path = Path(source_dir)
+    dst_path = Path(target_dir)
     dst_path.mkdir(parents=True, exist_ok=True)
     src_path.mkdir(parents=True, exist_ok=True)
 
-    organizer = MusicOrganizer(_P("model"), src_path, dst_path)
-    organizer.inference = provider
-    organizer.structure_classifier.inference = provider
+    organizer = MusicOrganizer(inference, Path("model"), src_path, dst_path)
 
     return create_app(organizer)

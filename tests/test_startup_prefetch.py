@@ -3,7 +3,7 @@ from pathlib import Path
 
 from src.server import create_app
 from src.organizer import MusicOrganizer
-
+from src.inference import InferenceProvider
 
 def test_startup_prefetch(tmp_path: Path, monkeypatch):
     # Arrange a source with two folders
@@ -12,7 +12,7 @@ def test_startup_prefetch(tmp_path: Path, monkeypatch):
     (source / "albumA").mkdir(parents=True)
     (source / "albumB").mkdir(parents=True)
 
-    org = MusicOrganizer(tmp_path / "model.gguf", source, target)
+    org = MusicOrganizer(InferenceProvider(provider="llama", model="llama3.1"), tmp_path / "model.gguf", source, target)
 
     app = create_app(org)
     with TestClient(app) as client:
