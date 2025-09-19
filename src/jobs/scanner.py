@@ -1,7 +1,7 @@
 from pathlib import Path
 import os
 
-from logging import logger
+import logging
 
 from ..metadata import MetadataExtractor  # type: ignore
 
@@ -123,6 +123,7 @@ def perform_scan(jobstore: SQLiteJobStore, base: Path) -> None:
                 jobstore.enqueue(artist_or_album, {"folder_name": artist_or_album.name}, job_type="analyze")
                 continue
 
+            logger.info(f"Enqueuing {artist_or_album} as artist collection")
             # Artist collection heuristic: enqueue each subdir that contains music
             enqueued_any = False
             for album_dir in sorted(subdirs):
