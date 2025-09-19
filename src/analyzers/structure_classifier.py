@@ -115,8 +115,7 @@ Respond with ONLY the classification (one of the three options above)."""
             return "single_album"
 
         # Name-agnostic, count-based logic:
-        # If combined distinct audio filenames across immediate subdirs exceeds the number of direct files,
-        # treat as multi-disc. If root has no files and there are at least two subdirs with any audio, also treat as multi-disc.
+        # Prefer artist_collection when many album subfolders exist; only consider multi-disc when there are few discs.
         subdir_distinct_names = set()
         subdir_any_files = 0
         for s in subdirs:
@@ -127,15 +126,20 @@ Respond with ONLY the classification (one of the three options above)."""
                 subdir_distinct_names.add(str(bn).lower())
         combined_distinct = len(subdir_distinct_names)
 
-        # Prefer multi-disc when subdir distinct tracks dominate direct root files
-        if len(subdirs) >= 2 and combined_distinct > direct_files:
+        # If there are many subdirectories with audio, treat as artist collection
+        if subdir_any_files >= 5:
+            return "artist_collection"
+
+        # Mixed case with some root files: compare root vs subdir distinct track names
+        if direct_files > 0:
+            if subdir_any_files >= 2 and subdir_any_files <= 4 and combined_distinct > direct_files:
+                return "multi_disc_album"
+            return "single_album"
+
+        # No root files: two to four subdirs with audio -> multi-disc, else artist collection
+        if subdir_any_files >= 2 and subdir_any_files <= 4:
             return "multi_disc_album"
 
-        # No root files but multiple subdirs with audio: multi-disc
-        if direct_files == 0 and subdir_any_files >= 2:
-            return "multi_disc_album"
-
-        # Otherwise: artist collection if multiple subdirs, else single album
         if len(subdirs) >= 2:
             return "artist_collection"
 

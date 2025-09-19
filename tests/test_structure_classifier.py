@@ -61,3 +61,25 @@ def test_count_based_multi_disc_vs_single_album():
     assert clf.classify_directory_structure(analysis_multi) == "multi_disc_album"
 
 
+def test_artist_collection_many_album_subdirs():
+    clf = StructureClassifier(DummyInference())
+    # Simulate 'A Perfect Circle' artist folder with many album subdirs and no root files
+    analysis_artist = {
+        "folder_name": "A Perfect Circle",
+        "folder_path": "/music/A Perfect Circle",
+        "total_music_files": 0,
+        "direct_music_files": 0,
+        "subdirectories": [
+            {"name": "2000 - Mer de noms", "path": "", "depth": 1, "music_files": 12, "music_basenames": [f"{i:02d}.flac" for i in range(1, 13)], "subdirectories": []},
+            {"name": "2003 - Thirteenth Step", "path": "", "depth": 1, "music_files": 12, "music_basenames": [f"{i:02d}.flac" for i in range(1, 13)], "subdirectories": []},
+            {"name": "2004 - aMOTION", "path": "", "depth": 1, "music_files": 9, "music_basenames": [f"{i:02d}.flac" for i in range(1, 10)], "subdirectories": []},
+            {"name": "2004 - eMOTIVe", "path": "", "depth": 1, "music_files": 12, "music_basenames": [f"{i:02d}.flac" for i in range(1, 13)], "subdirectories": []},
+            {"name": "2013 - Three Sixty", "path": "", "depth": 1, "music_files": 19, "music_basenames": [f"a{i}.flac" for i in range(1, 20)], "subdirectories": []},
+            {"name": "2018 - Eat the Elephant", "path": "", "depth": 1, "music_files": 12, "music_basenames": [f"{i:02d}.flac" for i in range(1, 13)], "subdirectories": []},
+        ],
+        "max_depth": 1,
+        "directory_tree": "",
+    }
+    assert clf.classify_directory_structure(analysis_artist) == "artist_collection"
+
+
