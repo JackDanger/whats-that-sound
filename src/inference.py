@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
+from tenacity import retry, stop_after_attempt, wait_exponential
 from typing import Optional
 
 # Optional, lazily used imports exposed for easier mocking in tests
@@ -29,12 +30,19 @@ except Exception:  # pragma: no cover
 class TextProvider(ABC):
     """Abstract text generation provider.
 
-    Subclasses must implement generate to return plain text for a given prompt and model.
+    Subclasses must implement _generate to return plain text for a given prompt and model.
     """
 
     @abstractmethod
-    def generate(self, prompt: str, model: str) -> str:
+    def _generate(self, prompt: str, model: str) -> str:
+        """Provider-specific generation without retries."""
         raise NotImplementedError
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+    def generate(self, prompt: str, model: str) -> str:
+        """Generate text for a given prompt and model with retry logic."""
+        return self._generate(prompt, model)
+
 
 
 class OpenAITextProvider(TextProvider):
@@ -45,7 +53,7 @@ class OpenAITextProvider(TextProvider):
                 "OPENAI_API_KEY is required when using the OpenAI provider"
             )
 
-    def generate(self, prompt: str, model: str) -> str:
+    def _generate(self, prompt: str, model: str) -> str:
         if OpenAI is None:
             raise RuntimeError("openai client library not installed")
         client = OpenAI(api_key=self._api_key)
@@ -94,7 +102,7 @@ class GeminiTextProvider(TextProvider):
         genai.configure(api_key=api_key)
         self._genai = genai
 
-    def generate(self, prompt: str, model: str) -> str:
+    def _generate(self, prompt: str, model: str) -> str:
         gm = self._genai.GenerativeModel(model)
         resp = gm.generate_content(prompt)
         text = getattr(resp, "text", None)
@@ -115,7 +123,7 @@ class LlamaTextProvider(TextProvider):
         self.base_url = base_url or os.getenv("LLAMA_API_BASE", "http://localhost:11434/v1")
         self.api_key = api_key or os.getenv("LLAMA_API_KEY")
 
-    def generate(self, prompt: str, model: str) -> str:
+    def _generate(self, prompt: str, model: str) -> str:
         import json as _json
         if requests is None:
             raise RuntimeError("requests library not installed")

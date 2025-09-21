@@ -6,7 +6,7 @@ sync:
 
 test:
 	. .venv/bin/activate && python -m pytest tests/ -v
-	cd frontend && bash -lc 'source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; if [ -f .nvmrc ]; then nvm install --silent >/dev/null 2>&1 || true; nvm use --silent >/dev/null 2>&1 || true; fi; npm ci --silent || npm install --silent; npm run -s test'
+	cd frontend && bash -lc 'source ~/.nvm/nvm.sh >/dev/null 2>&1 || true; if [ -f .nvmrc ]; then nvm install --silent >/dev/null 2>&1 || true; nvm use --silent >/dev/null 2>&1 || true; fi; npm ci --silent || npm install --silent; npm run -s test --full-trace'
 
 test-cov:
 	. .venv/bin/activate && python -m pytest tests/ --cov=src --cov-report=term-missing

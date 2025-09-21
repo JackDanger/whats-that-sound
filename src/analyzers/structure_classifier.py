@@ -15,18 +15,12 @@ class StructureClassifier:
         self.inference = inference
 
     def classify_directory_structure(self, structure_analysis: Dict) -> str:
-        """Classify the directory structure type using LLM with heuristic fallback.
-
-        Args:
-            structure_analysis: Directory structure analysis from DirectoryAnalyzer
-
-        Returns:
-            One of: "single_album", "multi_disc_album", "artist_collection"
-        """
-        prompt = self._build_classification_prompt(structure_analysis)
+        prompt = self.build_classification_prompt(structure_analysis)
 
         try:
+            print(f"Prompt: {prompt}")
             classification = self.inference.generate(prompt).strip().lower()
+            print(f"Classification: {classification}")
 
             # Validate classification
             valid_types = ["single_album", "multi_disc_album", "artist_collection"]
@@ -37,23 +31,16 @@ class StructureClassifier:
                 return self._heuristic_classification(structure_analysis)
 
         except Exception as e:
+            print(e)
             return self._heuristic_classification(structure_analysis)
 
-    def _build_classification_prompt(self, structure_analysis: Dict) -> str:
-        """Build prompt for LLM structure classification.
-        
-
-        Args:
-            structure_analysis: Directory structure analysis
-
-        Returns:
-            Formatted prompt string
-        """
+    def build_classification_prompt(self, structure_analysis: Dict) -> str:
         prompt = f"""You are a music collection organization expert. Analyze the following directory structure and classify it into one of these types:
 
 1. "single_album" - All music files are in the root directory or it's clearly a single album
-2. "multi_disc_album" - Multiple subdirectories that appear to be discs of the same album (e.g., "CD1", "CD2", "Disc 1", "Disc 2")
+2. "multi_disc_album" - Multiple subdirectories that appear to be discs of the same album (e.g., "CD1", "CD2", "Disc 1", "Disc 2"). This includes if there are tracks at the top level and then a subdir with some bonus content.
 3. "artist_collection" - Multiple subdirectories that appear to be different albums by the same artist
+4. "unknown" - The structure is not clear or not enough information to classify
 
 Directory Analysis:
 - Folder Name: {structure_analysis["folder_name"]}
@@ -68,21 +55,12 @@ Subdirectories:
 Directory Tree:
 {structure_analysis["directory_tree"]}
 
-Based on this structure, classify it as exactly one of: single_album, multi_disc_album, or artist_collection
+Based on this structure, classify it as exactly one of: single_album, multi_disc_album, artist_collection, or unknown
 
-Respond with ONLY the classification (one of the three options above)."""
-
+Respond with ONLY the classification (one of the four options above)."""
         return prompt
 
     def _format_subdirectories(self, subdirectories: list) -> str:
-        """Format subdirectory information for the prompt.
-
-        Args:
-            subdirectories: List of subdirectory info dictionaries
-
-        Returns:
-            Formatted string describing subdirectories
-        """
         if not subdirectories:
             return "None"
 
@@ -99,14 +77,6 @@ Respond with ONLY the classification (one of the three options above)."""
         return "\n".join(lines)
 
     def _heuristic_classification(self, structure_analysis: Dict) -> str:
-        """Fallback heuristic classification when LLM fails.
-
-        Args:
-            structure_analysis: Directory structure analysis
-
-        Returns:
-            Classification string
-        """
         subdirs = structure_analysis["subdirectories"]
         direct_files = structure_analysis["direct_music_files"]
 
@@ -114,33 +84,20 @@ Respond with ONLY the classification (one of the three options above)."""
         if direct_files > 0 and len(subdirs) <= 1:
             return "single_album"
 
-        # Name-agnostic, count-based logic:
-        # Prefer artist_collection when many album subfolders exist; only consider multi-disc when there are few discs.
-        subdir_distinct_names = set()
-        subdir_any_files = 0
-        for s in subdirs:
-            mf = int(s.get("music_files", 0) or 0)
-            if mf > 0:
-                subdir_any_files += 1
-            for bn in (s.get("music_basenames", []) or []):
-                subdir_distinct_names.add(str(bn).lower())
-        combined_distinct = len(subdir_distinct_names)
-
-        # If there are many subdirectories with audio, treat as artist collection
-        if subdir_any_files >= 5:
-            return "artist_collection"
-
-        # Mixed case with some root files: compare root vs subdir distinct track names
-        if direct_files > 0:
-            if subdir_any_files >= 2 and subdir_any_files <= 4 and combined_distinct > direct_files:
-                return "multi_disc_album"
-            return "single_album"
-
-        # No root files: two to four subdirs with audio -> multi-disc, else artist collection
-        if subdir_any_files >= 2 and subdir_any_files <= 4:
+        # Mixed case with some root files: compare root vs subdir distinct track names (to avoid false positives)
+        if self._has_multi_disk_pattern(subdirs):
             return "multi_disc_album"
 
         if len(subdirs) >= 2:
             return "artist_collection"
 
-        return "single_album"
+        return "undefined"
+
+    def _has_multi_disk_pattern(self, subdirs: list) -> bool:
+        for s in subdirs:
+            # "Volume 1 - good sutuff" -> "volume1goodstuff"
+            name = s.get("name", "").lower().replace(" ", "")
+            for pattern in ["cd1", "cd2", "disc1", "disc2", "volume1", "volume2", "part1", "part2", "vol1", "vol2", "disk1", "disk2", "set1", "set2"]:
+                if pattern in name:
+                    return True
+        return False

@@ -1,31 +1,51 @@
 """Tests for the StructureClassifier class."""
 
 import pytest
-from unittest.mock import Mock
-
+from pathlib import Path
+from src.analyzers.directory_analyzer import DirectoryAnalyzer
 from src.analyzers.structure_classifier import StructureClassifier
+from src.inference import build_provider_from_env
+
+
+def _fixture_path(*parts: str) -> Path:
+    base = Path(__file__).resolve().parent.parent / "fixtures" / "src_dir"
+    return base.joinpath(*parts)
 
 
 class TestStructureClassifier:
-    """Test cases for StructureClassifier class."""
 
     @pytest.fixture
-    def mock_inference(self):
-        """Create a mock inference provider for testing."""
-        m = Mock()
-        m.generate.return_value = "single_album"
-        return m
+    def classifier(self):
+        # Use the real inference provider configured via WTS_INFERENCE_URL/WTS_MODEL
+        provider = build_provider_from_env()
+        return StructureClassifier(provider)
 
-    @pytest.fixture
-    def classifier(self, mock_inference):
-        """Create a StructureClassifier instance for testing."""
-        return StructureClassifier(mock_inference)
 
-    def test_classify_directory_structure_with_llm_success(self, classifier, mock_inference):
-        """Test successful LLM-based directory structure classification."""
-        # Mock LLM to return specific classification
-        mock_inference.generate.return_value = "multi_disc_album"
+    def test_weezers_raditude_is_single_album_from_fs(self, classifier: StructureClassifier):
+        analyzer = DirectoryAnalyzer()
+        root = _fixture_path("Weezer", "2009 - Raditude")
+        analysis = analyzer.analyze_directory_structure(root)
+        result = classifier.classify_directory_structure(analysis)
+        assert result == "multi_disc_album"
 
+
+    def test_acdc_is_artist_collection_from_fs(self, classifier: StructureClassifier):
+        analyzer = DirectoryAnalyzer()
+        root = _fixture_path("AC-DC")
+        analysis = analyzer.analyze_directory_structure(root)
+        result = classifier.classify_directory_structure(analysis)
+        assert result == "artist_collection"
+
+
+    def test_toplevel_is_undefined_from_fs(self, classifier: StructureClassifier):
+        analyzer = DirectoryAnalyzer()
+        root = _fixture_path()
+        analysis = analyzer.analyze_directory_structure(root)
+        result = classifier.classify_directory_structure(analysis)
+        assert result == "undefined"
+
+
+    def test_classify_directory_structure_with_llm_success(self, classifier: StructureClassifier):
         structure = {
             "folder_name": "Test Album",
             "total_music_files": 20,
@@ -41,14 +61,10 @@ class TestStructureClassifier:
         classification = classifier.classify_directory_structure(structure)
 
         assert classification == "multi_disc_album"
-        mock_inference.generate.assert_called_once()
 
     def test_classify_directory_structure_with_llm_invalid_response(
-        self, classifier, mock_inference
+        self, classifier: StructureClassifier
     ):
-        """Test classification with invalid LLM response falls back to heuristics."""
-        # Mock LLM to return invalid classification
-        mock_inference.generate.return_value = "invalid_classification"
 
         structure = {
             "folder_name": "Test Album",
@@ -61,13 +77,9 @@ class TestStructureClassifier:
 
         classification = classifier.classify_directory_structure(structure)
 
-        # Should fall back to heuristic classification
         assert classification == "single_album"
 
-    def test_classify_directory_structure_with_llm_error(self, classifier, mock_inference):
-        """Test classification with LLM error falls back to heuristics."""
-        # Mock LLM to raise an error
-        mock_inference.generate.side_effect = Exception("LLM error")
+    def test_classify_directory_structure_with_llm_error(self, classifier: StructureClassifier):
 
         structure = {
             "folder_name": "Test Album",
@@ -80,11 +92,9 @@ class TestStructureClassifier:
 
         classification = classifier.classify_directory_structure(structure)
 
-        # Should fall back to heuristic classification
         assert classification == "single_album"
 
-    def test_heuristic_classification_single_album(self, classifier):
-        """Test heuristic classification for single album."""
+    def test_heuristic_classification_single_album(self, classifier: StructureClassifier):
         structure = {
             "subdirectories": [],
             "direct_music_files": 10,
@@ -93,8 +103,7 @@ class TestStructureClassifier:
         classification = classifier._heuristic_classification(structure)
         assert classification == "single_album"
 
-    def test_heuristic_classification_multi_disc_album(self, classifier):
-        """Test heuristic classification for multi-disc album."""
+    def test_heuristic_classification_multi_disc_album(self, classifier: StructureClassifier):
         structure = {
             "subdirectories": [
                 {"name": "CD1", "music_files": 12, "subdirectories": []},
@@ -106,8 +115,7 @@ class TestStructureClassifier:
         classification = classifier._heuristic_classification(structure)
         assert classification == "multi_disc_album"
 
-    def test_heuristic_classification_artist_collection(self, classifier):
-        """Test heuristic classification for artist collection."""
+    def test_heuristic_classification_artist_collection(self, classifier: StructureClassifier):
         structure = {
             "subdirectories": [
                 {"name": "First Album", "music_files": 12, "subdirectories": []},
@@ -120,8 +128,7 @@ class TestStructureClassifier:
         classification = classifier._heuristic_classification(structure)
         assert classification == "artist_collection"
 
-    def test_heuristic_classification_mixed_disc_patterns(self, classifier):
-        """Test heuristic classification with mixed disc patterns."""
+    def test_heuristic_classification_mixed_disc_patterns(self, classifier: StructureClassifier):
         structure = {
             "subdirectories": [
                 {"name": "Volume 1", "music_files": 12, "subdirectories": []},
@@ -132,11 +139,9 @@ class TestStructureClassifier:
         }
 
         classification = classifier._heuristic_classification(structure)
-        # Should detect as multi-disc since 2 out of 3 have disc patterns (>= 50%)
         assert classification == "multi_disc_album"
 
-    def test_heuristic_classification_with_direct_files_and_subdirs(self, classifier):
-        """Test heuristic classification with both direct files and subdirectories."""
+    def test_heuristic_classification_with_direct_files_and_subdirs(self, classifier: StructureClassifier):
         structure = {
             "subdirectories": [
                 {"name": "Bonus Tracks", "music_files": 3, "subdirectories": []},
@@ -145,16 +150,13 @@ class TestStructureClassifier:
         }
 
         classification = classifier._heuristic_classification(structure)
-        # Should still be classified as single album due to direct files
         assert classification == "single_album"
 
-    def test_format_subdirectories_empty(self, classifier):
-        """Test formatting of empty subdirectories list."""
+    def test_format_subdirectories_empty(self, classifier: StructureClassifier):
         result = classifier._format_subdirectories([])
         assert result == "None"
 
-    def test_format_subdirectories_normal(self, classifier):
-        """Test formatting of normal subdirectories list."""
+    def test_format_subdirectories_normal(self, classifier: StructureClassifier):
         subdirs = [
             {"name": "Album 1", "music_files": 10, "subdirectories": []},
             {"name": "Album 2", "music_files": 15, "subdirectories": ["Bonus"]},
@@ -165,8 +167,7 @@ class TestStructureClassifier:
         assert "Album 1: 10 music files, 0 subdirs" in result
         assert "Album 2: 15 music files, 1 subdirs" in result
 
-    def test_format_subdirectories_truncated(self, classifier):
-        """Test formatting of large subdirectories list gets truncated."""
+    def test_format_subdirectories_truncated(self, classifier: StructureClassifier):
         subdirs = []
         for i in range(15):  # More than 10 to test truncation
             subdirs.append(
@@ -180,7 +181,6 @@ class TestStructureClassifier:
         assert "... and 5 more subdirectories" in result
 
     def test_build_classification_prompt(self, classifier):
-        """Test building classification prompt."""
         structure = {
             "folder_name": "Test Album",
             "total_music_files": 20,
@@ -193,7 +193,7 @@ class TestStructureClassifier:
             "directory_tree": "Test Album\n├── CD1\n└── CD2",
         }
 
-        prompt = classifier._build_classification_prompt(structure)
+        prompt = classifier.build_classification_prompt(structure)
 
         assert "Test Album" in prompt
         assert "20" in prompt  # total music files

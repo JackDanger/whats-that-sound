@@ -40,12 +40,9 @@ def _dir_has_music_anywhere(dir_path: Path) -> bool:
 
 
 def _dir_has_music_direct(dir_path: Path) -> bool:
-    try:
-        for entry in dir_path.iterdir():
-            if entry.is_file() and entry.suffix.lower() in MetadataExtractor.SUPPORTED_FORMATS:
-                return True
-    except Exception:
-        pass
+    for entry in dir_path.iterdir():
+        if entry.is_file() and entry.suffix.lower() in MetadataExtractor.SUPPORTED_FORMATS:
+            return True
     return False
 
 
